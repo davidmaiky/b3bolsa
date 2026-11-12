@@ -1,0 +1,82 @@
+import { db } from "./db";
+import { yahooFundamentals, yahooHistory, type Fundamentals } from "./yahoo";
+import { yahooSymbol } from "./lse/symbols";
+import { momentum, valuation, type Momentum, type ValuationSignals } from "./indicators";
+import { priceService } from "./prices";
+import { computePosition } from "./portfolio";
+import type { AssetClass, AssetRef } from "./types";
+
+const FUND_TTL_MS = 24 * 3600_000;
+
+export async function getFundamentals(asset: { id: string } & AssetRef, force = false): Promise<Fundamentals | null> {
+  if (asset.assetClass !== "B3" && asset.assetClass !== "US") return null;
+  const cached = await db.fundamentals.findUnique({ where: { assetId: asset.id } });
+  if (cached && !force && Date.now() - +cached.updatedAt < FUND_TTL_MS) return JSON.parse(cached.data);
+  try {
+    const f = await yahooFundamentals(yahooSymbol(asset));
+    await db.fundamentals.upsert({
+      where: { assetId: asset.id },
+      create: { assetId: asset.id, data: JSON.stringify(f) },
+      update: { data: JSON.stringify(f) },
+    });
+    return f;
+  } catch (e) {
+    console.warn("[fundamentals]", asset.ticker, (e as Error).message);
+    return cached ? JSON.parse(cached.data) : null;
+  }
+}
+
+export interface AssetAnalysis {
+  ticker: string;
+  name: string | null;
+  assetClass: AssetClass;
+  currency: string;
+  price?: number;
+  priceSource?: string;
+  position: { quantity: number; avgPrice: number; unrealizedPct?: number } | null;
+  fundamentals: Fundamentals | null;
+  valuation: ValuationSignals | null;
+  momentum: Momentum;
+}
+
+export interface AssetAnalysisWithHistory extends AssetAnalysis {
+  history: { date: string; close: number }[];
+}
+
+export async function analyzeAsset(assetId: string): Promise<AssetAnalysisWithHistory> {
+  const asset = await db.asset.findUniqueOrThrow({ where: { id: assetId }, include: { transactions: true } });
+  const ref = { ticker: asset.ticker, assetClass: asset.assetClass as AssetClass, currency: asset.currency };
+  priceService.track([ref]);
+  const q = priceService.get(ref);
+  const [fundamentals, hist] = await Promise.all([
+    getFundamentals({ id: asset.id, ...ref }),
+    yahooHistory(yahooSymbol(ref), 400).catch((e) => {
+      console.warn("[history]", ref.ticker, (e as Error).message);
+      return [] as { date: string; close: number }[];
+    }),
+  ]);
+  const price = q?.price ?? fundamentals?.price;
+  const mom: Momentum = hist.length ? momentum(hist.map((h) => h.close), ref.assetClass === "CRYPTO" ? 365 : 252) : {};
+
+  const pos = asset.transactions.length ? computePosition(asset.transactions) : null;
+  return {
+    ticker: asset.ticker,
+    name: asset.name,
+    assetClass: ref.assetClass,
+    currency: asset.currency,
+    price,
+    priceSource: q?.source,
+    position:
+      pos && pos.quantity > 0
+        ? {
+            quantity: pos.quantity,
+            avgPrice: pos.avgPrice,
+            unrealizedPct: price ? (price / pos.avgPrice - 1) * 100 : undefined,
+          }
+        : null,
+    fundamentals,
+    valuation: fundamentals ? valuation(fundamentals, price) : null,
+    momentum: mom,
+    history: hist,
+  };
+}

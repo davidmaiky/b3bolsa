@@ -1,0 +1,56 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// assetClass: B3 | US | CRYPTO | FX
+model Asset {
+  id           String         @id @default(cuid())
+  ticker       String         @unique // PETR4, AAPL, BTC, USD
+  name         String?
+  assetClass   String
+  currency     String // BRL | USD
+  watchlist    Boolean        @default(false)
+  createdAt    DateTime       @default(now())
+  transactions Transaction[]
+  fundamentals Fundamentals?
+  suggestions  Suggestion[]
+}
+
+model Transaction {
+  id        String   @id @default(cuid())
+  assetId   String
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  type      String // BUY | SELL
+  quantity  Float
+  price     Float // in the asset currency
+  fees      Float    @default(0)
+  date      DateTime
+  note      String?
+  createdAt DateTime @default(now())
+}
+
+model Fundamentals {
+  assetId   String   @id
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  data      String // JSON
+  updatedAt DateTime @updatedAt
+}
+
+model Suggestion {
+  id         String   @id @default(cuid())
+  assetId    String
+  asset      Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  action     String // COMPRAR | MANTER | VENDER
+  confidence Float
+  targetPrice Float?
+  rationale  String
+  risks      String // JSON array
+  indicators String // JSON snapshot sent to the LLM
+  model      String
+  createdAt  DateTime @default(now())
+}
