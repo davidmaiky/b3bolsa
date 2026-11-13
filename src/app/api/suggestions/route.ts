@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { analyzeAsset } from "@/lib/analysis";
 import { geminiConfigured, geminiModel, suggest } from "@/lib/llm/gemini";
 import { loadPositions, weightsBrl } from "@/lib/server-portfolio";
+import { priceService } from "@/lib/prices";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +32,21 @@ export async function POST(req: Request) {
   }
 
   try {
-    const out = await suggest(analyses, weightsBrl(positions));
+    const ctx = weightsBrl(positions);
+    const targets = await db.allocationTarget.findMany();
+    let classAllocation: { classe: string; atual_pct: number; meta_pct: number }[] | undefined;
+    if (targets.length && ctx.totalBrl > 0) {
+      const fx = priceService.quotes.get("USD:FX")?.price ?? 0;
+      const byClass: Record<string, number> = {};
+      for (const p of positions) {
+        if (p.quantity <= 0) continue;
+        const px = priceService.quotes.get(p.quoteKey)?.price ?? p.avgPrice;
+        byClass[p.assetClass] = (byClass[p.assetClass] ?? 0) + px * p.quantity * (p.currency === "USD" ? fx : 1);
+      }
+      const t = Object.fromEntries(targets.map((x) => [x.assetClass, x.percent]));
+      classAllocation = [...new Set([...Object.keys(byClass), ...Object.keys(t)])].map((c) => ({ classe: c, atual_pct: ((byClass[c] ?? 0) / ctx.totalBrl) * 100, meta_pct: t[c] ?? 0 }));
+    }
+    const out = await suggest(analyses, { ...ctx, classAllocation });
     const byTicker = new Map(analyses.map((a, i) => [a.ticker, ids[i]]));
     const saved = [];
     for (const s of out) {

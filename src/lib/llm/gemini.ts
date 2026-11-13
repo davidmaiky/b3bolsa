@@ -62,7 +62,7 @@ const round = (_k: string, v: unknown) => (typeof v === "number" ? Number(v.toPr
 
 export async function suggest(
   analyses: AssetAnalysis[],
-  portfolioContext: { totalBrl: number; weights: Record<string, number> },
+  portfolioContext: { totalBrl: number; weights: Record<string, number>; classAllocation?: { classe: string; atual_pct: number; meta_pct: number }[] },
 ): Promise<LlmSuggestion[]> {
   if (!geminiConfigured()) throw new Error("Configure GEMINI_API_KEY no arquivo .env");
   // preview models are only served on v1beta
@@ -80,6 +80,9 @@ export async function suggest(
           {
             text:
               `Data: ${new Date().toISOString().slice(0, 10)}. Patrimônio total: R$ ${portfolioContext.totalBrl.toFixed(2)}.\n` +
+              (portfolioContext.classAllocation?.length
+                ? `Meta de alocação do investidor por classe (use para favorecer compras em classes abaixo da meta e cautela em classes acima): ${JSON.stringify(portfolioContext.classAllocation, round)}.\n`
+                : "") +
               `Dados dos ativos (frações: 0.08 = 8%; valuation.score é um placar por regras de -100 a 100):\n` +
               JSON.stringify(payload, round),
           },

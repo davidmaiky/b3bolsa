@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     value: await makeToken(sessionSecret()),
     httpOnly: true,
     sameSite: "lax",
-    secure: req.nextUrl.protocol === "https:",
+    secure: (req.headers.get("x-forwarded-proto")?.split(",")[0].trim() ?? req.nextUrl.protocol.replace(":", "")) === "https", // behind the proxy TLS ends before the app
     path: "/",
     maxAge: SESSION_TTL_MS / 1000,
   });

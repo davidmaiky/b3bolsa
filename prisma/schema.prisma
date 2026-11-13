@@ -20,6 +20,7 @@ model Asset {
   fundamentals Fundamentals?
   suggestions  Suggestion[]
   dividends    Dividend[]
+  alerts       Alert[]
 }
 
 model Transaction {
@@ -71,4 +72,27 @@ model Dividend {
   createdAt DateTime @default(now())
 
   @@index([assetId, date])
+}
+
+// Meta de alocação por classe de ativo (B3 | US | CRYPTO | FX), em % da carteira.
+model AllocationTarget {
+  assetClass String @id
+  percent    Float
+}
+
+// Alerta de preço de uso único. type: ABOVE | BELOW | BELOW_BAZIN | BELOW_GRAHAM (os dois últimos usam o valor calculado dos fundamentos).
+model Alert {
+  id           String    @id @default(cuid())
+  assetId      String
+  asset        Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  type         String
+  target       Float? // preço-alvo na moeda do ativo (ABOVE/BELOW)
+  note         String?
+  active       Boolean   @default(true)
+  triggeredAt  DateTime?
+  triggerPrice Float?
+  seenAt       DateTime? // quando o disparo foi visto/dispensado na tela
+  createdAt    DateTime  @default(now())
+
+  @@index([active])
 }

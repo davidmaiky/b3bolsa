@@ -1,0 +1,13 @@
+# Teste local da imagem de produção: docker compose up --build  (http://localhost:3000)
+services:
+  app:
+    build: .
+    ports: ["3000:3000"]
+    env_file: .env
+    environment:
+      DATABASE_URL: file:/data/app.db
+    volumes:
+      - carteira-data:/data
+    restart: unless-stopped
+volumes:
+  carteira-data:

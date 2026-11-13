@@ -2,12 +2,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { StatusBadge } from "./StatusBadge";
+import { AlertToaster } from "./AlertToaster";
 
 const NAV = [
   { href: "/", label: "Carteira" },
   { href: "/transacoes", label: "Transações" },
   { href: "/evolucao", label: "Evolução" },
   { href: "/proventos", label: "Proventos" },
+  { href: "/alertas", label: "Alertas" },
+  { href: "/rebalanceamento", label: "Rebalancear" },
   { href: "/imposto", label: "IR" },
   { href: "/sugestoes", label: "Sugestões IA" },
 ];
@@ -16,6 +19,7 @@ export function Header() {
   const path = usePathname();
   const login = path === "/login";
   return (
+    <>
     <header className="border-b border-line bg-panel">
       <div className="mx-auto max-w-7xl px-4 py-2 sm:py-0 sm:h-14 flex flex-wrap items-center gap-x-6 gap-y-1">
         <Link href="/" className="font-semibold tracking-tight">Carteira Global</Link>
@@ -29,5 +33,7 @@ export function Header() {
         )}
       </div>
     </header>
+    {!login && <AlertToaster />}
+    </>
   );
 }
