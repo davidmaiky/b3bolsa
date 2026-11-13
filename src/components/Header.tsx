@@ -6,6 +6,7 @@ import { AlertToaster } from "./AlertToaster";
 
 const NAV = [
   { href: "/", label: "Carteira" },
+  { href: "/renda-fixa", label: "Renda fixa" },
   { href: "/transacoes", label: "Transações" },
   { href: "/evolucao", label: "Evolução" },
   { href: "/proventos", label: "Proventos" },

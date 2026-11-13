@@ -8,15 +8,18 @@ import { fmtMoney, fmtNum, fmtPct, tone } from "@/lib/format";
 import { ASSET_CLASS_LABEL, type AssetClass, type Quote } from "@/lib/types";
 import type { PositionRow } from "@/lib/server-portfolio";
 import { AddAsset } from "./AddAsset";
+import type { FixedIncomeSummary } from "@/lib/fixed-income-server";
 
 const CLASS_COLOR: Record<AssetClass, string> = { B3: "#22c55e", FII: "#14b8a6", ETF: "#eab308", US: "#3b82f6", CRYPTO: "#f59e0b", FX: "#a855f7" };
 
 export function Dashboard() {
   const [positions, setPositions] = useState<PositionRow[] | null>(null);
+  const [fixed, setFixed] = useState<FixedIncomeSummary | null>(null);
   const { quotes, dir, connected } = useLivePrices();
 
   const load = useCallback(() => {
     fetch("/api/portfolio").then((r) => r.json()).then((d) => setPositions(d.positions));
+    fetch("/api/fixed-income").then((r) => (r.ok ? r.json() : null)).then((d) => setFixed(d?.summary ?? null)).catch(() => setFixed(null));
   }, []);
   useEffect(load, [load]);
 
@@ -34,8 +37,9 @@ export function Dashboard() {
   const watch = rows.filter((r) => r.p.quantity === 0);
 
   const fin = (x: number) => (Number.isFinite(x) ? x : 0);
-  const total = held.reduce((s, r) => s + fin(r.v.marketValueBrl ?? r.v.costBrl), 0);
-  const cost = held.reduce((s, r) => s + fin(r.v.costBrl), 0);
+  const rfNet = fixed?.net ?? 0;
+  const total = held.reduce((s, r) => s + fin(r.v.marketValueBrl ?? r.v.costBrl), 0) + rfNet;
+  const cost = held.reduce((s, r) => s + fin(r.v.costBrl), 0) + (fixed?.principal ?? 0);
   const realized = rows.reduce((s, r) => s + fin(r.p.realizedPnl * r.v.fxToBrl), 0);
   const divs12 = held.reduce((s, r) => s + fin(r.p.dividendsNet12m * r.v.fxToBrl), 0);
   const missingFx = !fx && held.some((r) => r.p.currency === "USD");
@@ -50,6 +54,7 @@ export function Dashboard() {
       return acc;
     }, {}),
   ).map(([k, value]) => ({ name: ASSET_CLASS_LABEL[k as AssetClass], value, color: CLASS_COLOR[k as AssetClass] }));
+  if (rfNet > 0) byClass.push({ name: "Renda fixa", value: rfNet, color: "#64748b" });
 
   if (!positions) return <p className="text-muted">Carregando…</p>;
 
@@ -73,6 +78,11 @@ export function Dashboard() {
           </div>
           <PositionsTable rows={held} dir={dir} total={total} />
           {held.length === 0 && <p className="text-muted text-sm py-6 text-center">Adicione um ativo e lance uma compra em Transações.</p>}
+          {fixed && fixed.count > 0 && (
+            <p className="text-sm text-muted border-t border-line mt-3 pt-3">
+              Renda fixa: <span className="num text-fg">{fmtMoney(fixed.net)}</span> líquido em {fixed.count} aplicaç{fixed.count === 1 ? "ão" : "ões"} · <Link className="underline hover:text-fg" href="/renda-fixa">ver detalhes</Link>
+            </p>
+          )}
         </div>
         <div className="card p-4">
           <h2 className="font-semibold mb-2">Alocação</h2>

@@ -127,3 +127,32 @@ model FiiInfo {
   segment           String?
   updatedAt         DateTime @updatedAt
 }
+
+// Aplicação em renda fixa de banco (CDB, LCI, LCA...). Cada aplicação é um registro: o valor é calculado pelas condições do contrato.
+model FixedIncome {
+  id           String    @id @default(cuid())
+  kind         String // CDB | LCI | LCA | CRI | CRA | DEBENTURE | OUTRO
+  issuer       String // banco/emissor
+  label        String? // apelido
+  indexer      String // PRE | CDI_PCT | CDI_PLUS
+  rate         Float // PRE: % a.a. | CDI_PCT: % do CDI (ex.: 110) | CDI_PLUS: taxa % a.a. somada ao CDI
+  principal    Float // valor aplicado (R$)
+  startDate    DateTime
+  maturityDate DateTime
+  liquidity    String    @default("MATURITY") // DAILY | MATURITY
+  fgc          Boolean   @default(true)
+  note         String?
+  redeemedAt   DateTime?
+  redeemedNet  Float? // valor líquido recebido no resgate
+  createdAt    DateTime  @default(now())
+
+  @@index([redeemedAt])
+}
+
+// Séries do Banco Central (ex.: 12 = CDI diário em % a.d.), guardadas para não depender da API a cada tela.
+model RateCache {
+  code      Int      @id
+  data      String // JSON [{date, close}]
+  fromDate  String // início do período guardado
+  updatedAt DateTime @updatedAt
+}

@@ -91,6 +91,16 @@ Para FIIs, Graham, Bazin e P/L não se aplicam. A página do ativo mostra **P/VP
 
 No IR, FII paga 20% sobre o ganho de capital, sem isenção (rendimentos são isentos para pessoa física e não entram no cálculo). ETF de renda variável paga 15% sem isenção de R$ 20 mil. ETFs entram na análise por momento e volatilidade, como cripto.
 
+## Renda fixa
+
+A página **Renda fixa** controla CDB, LCI, LCA, CRI, CRA e debêntures de bancos. Não existe cotação pública para esses títulos, então o valor é **calculado pelas condições do contrato**, que você cadastra: banco, valor aplicado, datas, rentabilidade (**prefixada**, **% do CDI** ou **CDI + taxa**), liquidez e se tem FGC.
+
+- **Valor bruto**: a "curva" do contrato. Prefixado: (1 + taxa)^(dias úteis/252). CDI: produto do CDI diário do Banco Central sobre os dias úteis após a aplicação (calendário de feriados nacionais da ANBIMA). Depois do vencimento o valor para de render.
+- **Valor líquido**: desconta IR regressivo (22,5% até 180 dias, 20% até 360, 17,5% até 720, 15% acima) e IOF nos primeiros 30 dias. LCI, LCA, CRI e CRA são isentos de IR para pessoa física.
+- **Integração**: o valor líquido entra no patrimônio, no resultado e na alocação da Carteira, e é uma classe ("Renda fixa") no Rebalanceamento. Há aviso de vencimentos nos próximos 30 dias e de proximidade do limite do FGC (R$ 250 mil por CPF e instituição).
+- **Resgate**: marque a aplicação como resgatada (com o valor líquido recebido, ou a estimativa) e ela sai do patrimônio.
+- **Limites**: é uma estimativa e o extrato do banco manda. Ainda não há IPCA+ nem Tesouro Direto; a integração com a página de Evolução, o IR e as sugestões do Gemini fica para as próximas etapas.
+
 ## Indicadores
 
 - **Valor de Graham**: √(22,5 × LPA × VPA), com margem de segurança = (valor − preço) / valor.

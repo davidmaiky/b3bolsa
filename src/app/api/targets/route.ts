@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const Body = z.object({ B3: z.number().min(0).max(100), FII: z.number().min(0).max(100).default(0), ETF: z.number().min(0).max(100).default(0), US: z.number().min(0).max(100), CRYPTO: z.number().min(0).max(100), FX: z.number().min(0).max(100) });
+const Body = z.object({ B3: z.number().min(0).max(100), FII: z.number().min(0).max(100).default(0), RF: z.number().min(0).max(100).default(0), ETF: z.number().min(0).max(100).default(0), US: z.number().min(0).max(100), CRYPTO: z.number().min(0).max(100), FX: z.number().min(0).max(100) });
 
 export async function GET() {
   const rows = await db.allocationTarget.findMany();

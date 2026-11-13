@@ -4,16 +4,18 @@ import { useLivePrices } from "@/hooks/useLivePrices";
 import { valuePosition } from "@/lib/portfolio";
 import { rebalance } from "@/lib/rebalance";
 import { fmtMoney, fmtPct, tone } from "@/lib/format";
-import { ASSET_CLASS_LABEL, type AssetClass } from "@/lib/types";
+import { ASSET_CLASS_LABEL } from "@/lib/types";
 import type { PositionRow } from "@/lib/server-portfolio";
 
-const CLASSES: AssetClass[] = ["B3", "FII", "ETF", "US", "CRYPTO", "FX"];
+const CLASSES = ["B3", "FII", "ETF", "US", "CRYPTO", "FX", "RF"] as const;
+const LABEL: Record<string, string> = { ...ASSET_CLASS_LABEL, RF: "Renda fixa" };
 const num = (s: string) => Number(s.replace(",", ".")) || 0;
 
 export default function RebalanceamentoPage() {
   const [positions, setPositions] = useState<PositionRow[] | null>(null);
+  const [rfNet, setRfNet] = useState(0);
   const [saved, setSaved] = useState<Record<string, number>>({});
-  const [form, setForm] = useState<Record<string, string>>({ B3: "", FII: "", ETF: "", US: "", CRYPTO: "", FX: "" });
+  const [form, setForm] = useState<Record<string, string>>({ B3: "", FII: "", ETF: "", US: "", CRYPTO: "", FX: "", RF: "" });
   const [contribution, setContribution] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
@@ -22,6 +24,7 @@ export default function RebalanceamentoPage() {
 
   const load = useCallback(() => {
     fetch("/api/portfolio").then((r) => r.json()).then((d) => setPositions(d.positions));
+    fetch("/api/fixed-income").then((r) => (r.ok ? r.json() : null)).then((d) => setRfNet(d?.summary?.net ?? 0)).catch(() => setRfNet(0));
     fetch("/api/targets").then((r) => r.json()).then((t: Record<string, number>) => {
       setSaved(t);
       setForm(Object.fromEntries(CLASSES.map((c) => [c, t[c] !== undefined ? String(t[c]) : ""])));
@@ -38,8 +41,9 @@ export default function RebalanceamentoPage() {
       const brl = v.marketValueBrl ?? v.costBrl;
       if (Number.isFinite(brl)) out[p.assetClass] += brl;
     }
+    out.RF = rfNet;
     return out;
-  }, [positions, quotes, fx]);
+  }, [positions, quotes, fx, rfNet]);
 
   const sum = CLASSES.reduce((s, c) => s + num(form[c]), 0);
   const missingFx = !fx && (positions ?? []).some((p) => p.quantity > 0 && p.currency === "USD");
@@ -74,7 +78,7 @@ export default function RebalanceamentoPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end text-sm">
           {CLASSES.map((c) => (
             <label key={c} className="block">
-              <span className="text-xs text-muted block mb-1">{ASSET_CLASS_LABEL[c]}</span>
+              <span className="text-xs text-muted block mb-1">{LABEL[c]}</span>
               <input className="input w-full" inputMode="decimal" placeholder="0" value={form[c]} onChange={(e) => { setOk(false); setForm({ ...form, [c]: e.target.value }); }} />
             </label>
           ))}
@@ -107,7 +111,7 @@ export default function RebalanceamentoPage() {
                 <tbody>
                   {rows.filter((r) => r.targetPct > 0 || r.current > 0).map((r) => (
                     <tr key={r.assetClass} className="border-t border-line text-right">
-                      <td className="text-left py-2 font-medium">{ASSET_CLASS_LABEL[r.assetClass as AssetClass] ?? r.assetClass}</td>
+                      <td className="text-left py-2 font-medium">{LABEL[r.assetClass] ?? r.assetClass}</td>
                       <td className="num">{fmtMoney(r.current)}</td>
                       <td className="num">{fmtPct(r.currentPct, 1, false)}</td>
                       <td className="num text-muted">{fmtPct(r.targetPct, 1, false)}</td>

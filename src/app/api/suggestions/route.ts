@@ -7,6 +7,7 @@ import type { Profile } from "@/lib/profile";
 import { loadPositions, weightsBrl } from "@/lib/server-portfolio";
 import { priceService } from "@/lib/prices";
 import { yahooQuotes } from "@/lib/yahoo";
+import { loadFixedIncome } from "@/lib/fixed-income-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,8 +52,11 @@ export async function POST(req: Request) {
         const px = priceService.quotes.get(p.quoteKey)?.price ?? p.avgPrice;
         byClass[p.assetClass] = (byClass[p.assetClass] ?? 0) + px * p.quantity * (p.currency === "USD" ? fx ?? 0 : 1);
       }
+      const rf = (await loadFixedIncome().catch(() => null))?.summary.net ?? 0;
+      if (rf > 0) byClass.RF = rf;
+      const grand = ctx.totalBrl + rf;
       const t = Object.fromEntries(targets.map((x) => [x.assetClass, x.percent]));
-      classAllocation = [...new Set([...Object.keys(byClass), ...Object.keys(t)])].map((c) => ({ classe: c, atual_pct: ((byClass[c] ?? 0) / ctx.totalBrl) * 100, meta_pct: t[c] ?? 0 }));
+      classAllocation = [...new Set([...Object.keys(byClass), ...Object.keys(t)])].map((c) => ({ classe: c, atual_pct: ((byClass[c] ?? 0) / grand) * 100, meta_pct: t[c] ?? 0 }));
     }
     const profile = (await db.investorProfile.findUnique({ where: { id: "me" } })) as Profile | null;
     const { items: out, model, attempts } = await suggest(analyses, { ...ctx, classAllocation, profile });
