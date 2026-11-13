@@ -4,7 +4,7 @@ import { yahooSymbol } from "./lse/symbols";
 import { netOf } from "./dividends";
 import type { AssetClass, AssetRef } from "./types";
 import { forwardFill, type Close } from "./series";
-import { makeAccrual, rowLabel, valueFrom, type Rates, type Terms } from "./fixed-income";
+import { OPEN_END, makeAccrual, rowLabel, valueFrom, type Rates, type Terms } from "./fixed-income";
 import { getCdiSeries } from "./rates";
 import { loadRates, termsOf } from "./fixed-income-server";
 
@@ -231,7 +231,7 @@ export async function loadEvolution(force = false): Promise<Evolution> {
     getCdiSeries(startStr).then((r) => r.series ?? ([] as Close[])),
   ]);
   const fx2 = fixedRows.length
-    ? await loadRates(fixedRows.map((r) => ({ indexer: r.indexer, startDate: r.startDate.toISOString().slice(0, 10), maturityDate: r.maturityDate.toISOString().slice(0, 10), tdTitle: r.tdTitle })))
+    ? await loadRates(fixedRows.map((r) => ({ indexer: r.indexer, startDate: r.startDate.toISOString().slice(0, 10), maturityDate: r.maturityDate ? r.maturityDate.toISOString().slice(0, 10) : OPEN_END, tdTitle: r.tdTitle })))
     : null;
 
   const data = computeEvolution({

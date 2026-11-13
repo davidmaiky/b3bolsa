@@ -67,6 +67,10 @@ export const calendarDays = (from: string, to: string) => Math.round((+utc(to) -
 
 // ---------------- rendimento ----------------
 
+/** Contracts without a maturity date (e.g. CDB com liquidez diária) use this far-future sentinel internally. */
+export const OPEN_END = "9999-12-31";
+export const isOpenEnd = (maturity: string) => maturity >= OPEN_END;
+
 export interface Terms {
   kind: Kind;
   indexer: Indexer;
@@ -226,7 +230,7 @@ export function netValue(kind: Kind, principal: number, gross: number, startDate
 export interface FixedIncomeValue extends Net {
   principal: number;
   daysHeld: number;
-  daysToMaturity: number;
+  daysToMaturity: number | null; // null: sem vencimento
   matured: boolean;
   netYieldPct: number; // rendimento líquido acumulado sobre o aplicado
 }
@@ -244,8 +248,8 @@ export function valueFrom(t: Terms, asOf: string, accrual: (asOf: string) => num
     ...n,
     principal: t.principal,
     daysHeld: Math.max(0, calendarDays(t.startDate, asOf)),
-    daysToMaturity: calendarDays(asOf, t.maturityDate),
-    matured: asOf >= t.maturityDate,
+    daysToMaturity: isOpenEnd(t.maturityDate) ? null : calendarDays(asOf, t.maturityDate),
+    matured: !isOpenEnd(t.maturityDate) && asOf >= t.maturityDate,
     netYieldPct: t.principal ? ((n.net - t.principal) / t.principal) * 100 : 0,
   };
 }
@@ -253,3 +257,20 @@ export function valueFrom(t: Terms, asOf: string, accrual: (asOf: string) => num
 /** Display name: the nickname, else the Tesouro title, else "CDB Banco X". */
 export const rowLabel = (r: { label?: string | null; kind: string; issuer: string; tdTitle?: string | null }) =>
   r.label || (r.kind === "TESOURO" && r.tdTitle ? r.tdTitle : `${KIND_LABEL[r.kind as Kind] ?? r.kind} ${r.issuer}`);
+
+// ---------------- resgate parcial ----------------
+
+/** A "total" redemption whose amount is far below the estimated balance is probably a partial one. */
+export const looksPartial = (estimatedNet: number | null | undefined, amount: number) => !!estimatedNet && estimatedNet > 0 && amount < estimatedNet * 0.9;
+
+/**
+ * Fraction of the application taken out by a partial redemption of `amount` (net) when the estimated net balance is `estimatedNet`.
+ * Everything scales linearly with the principal, so the application can simply be split in two parts by this fraction.
+ */
+export function partialFraction(estimatedNet: number | null | undefined, amount: number): { fraction: number } | { error: string } {
+  if (!estimatedNet || estimatedNet <= 0) return { error: "Sem dados de mercado para calcular a parte resgatada agora: tente de novo em instantes" };
+  if (!(amount > 0)) return { error: "Informe o valor líquido resgatado" };
+  const fraction = amount / estimatedNet;
+  if (fraction >= 0.9999) return { error: "O valor é igual ou maior que o saldo estimado: use \"Resgate total\"" };
+  return { fraction };
+}

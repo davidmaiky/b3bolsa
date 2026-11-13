@@ -113,7 +113,8 @@ A página **Renda fixa** controla CDB, LCI, LCA, CRI, CRA, debêntures e **Tesou
 - **IR**: a página IR ganhou a seção "Renda fixa" por ano: resgates com rendimento líquido e IR retido estimado, rendimento isento (LCI, LCA, CRI, CRA) e a posição em 31/12 para Bens e Direitos. Confira com o informe de rendimentos do banco.
 - **Vencimentos**: aviso na tela, notificação do navegador e Telegram quando uma aplicação vence em até 7 dias (`FI_DUE_DAYS` muda o prazo) ou já venceu sem ser resgatada. Cada aviso de Telegram sai uma vez por aplicação.
 - **Gemini**: recebe a renda fixa (itens, vencimentos, exposição por emissor frente ao limite do FGC, CDI e IPCA 12 meses do dia) e escreve uma **visão geral da carteira** que aparece na página Sugestões IA, além das sugestões por ativo.
-- **Resgate**: marque a aplicação como resgatada (com o valor líquido recebido, ou a estimativa) e ela sai do patrimônio.
+- **Vencimento opcional**: CDB com liquidez diária pode ficar sem data de vencimento; ele rende sem parar e não gera aviso de vencimento. Tesouro Direto sempre tem vencimento (é o do título).
+- **Resgate**: "Resgate total" encerra a aplicação (com o valor líquido recebido, ou a estimativa). "Resgate parcial" retira só um valor: a aplicação é dividida na proporção e o restante continua ativo, com as mesmas condições e a mesma data de início. Se você informar num resgate total um valor bem menor que o saldo estimado, o app pergunta se foi parcial.
 - **Limites**: é uma estimativa e o extrato do banco manda. O FGC é só um aviso (limite de R$ 250 mil por CPF e instituição).
 
 ## Indicadores

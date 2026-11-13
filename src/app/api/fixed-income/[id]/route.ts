@@ -24,7 +24,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
   const merged = {
     kind: current.kind, issuer: current.issuer, label: current.label, indexer: current.indexer, rate: current.rate, principal: current.principal,
-    startDate: day(current.startDate), maturityDate: day(current.maturityDate), liquidity: current.liquidity, fgc: current.fgc, note: current.note,
+    startDate: day(current.startDate), maturityDate: current.maturityDate ? day(current.maturityDate) : null, liquidity: current.liquidity, fgc: current.fgc, note: current.note,
     tdTitle: current.tdTitle, quantity: current.quantity,
     ...body,
   };
@@ -32,7 +32,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
   const data = toDb(parsed.data);
   // a new maturity date means the maturity notices start over
-  const moved = day(data.maturityDate) !== day(current.maturityDate);
+  const moved = (data.maturityDate ? day(data.maturityDate) : null) !== (current.maturityDate ? day(current.maturityDate) : null);
   await db.fixedIncome.update({ where: { id }, data: { ...data, ...(moved ? { dueNotifiedAt: null, dueSeenAt: null } : {}) } });
   invalidateEvolution();
   return NextResponse.json({ ok: true });

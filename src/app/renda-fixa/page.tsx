@@ -14,7 +14,8 @@ export default function RendaFixaPage() {
   const [data, setData] = useState<{ items: FixedIncomeRow[]; summary: FixedIncomeSummary } | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState<string | null>(null);
-  const [redeeming, setRedeeming] = useState<{ id: string; date: string; net: string } | null>(null);
+  const [redeeming, setRedeeming] = useState<{ id: string; date: string; net: string; partial: boolean } | null>(null);
+  const [askTotal, setAskTotal] = useState<string | null>(null); // aviso: valor muito menor que o saldo, parece resgate parcial
   const [err, setErr] = useState<string | null>(null);
   const [td, setTd] = useState<{ date: string; titles: TdTitle[] } | null>(null);
   const [tdErr, setTdErr] = useState<string | null>(null);
@@ -44,7 +45,7 @@ export default function RendaFixaPage() {
     setErr(null);
     const body = {
       kind: form.kind, issuer: form.issuer, label: form.label || null, indexer: form.indexer, rate: num(form.rate), principal: num(form.principal),
-      startDate: form.startDate, maturityDate: form.maturityDate, liquidity: form.liquidity, fgc: form.fgc, note: form.note || null,
+      startDate: form.startDate, maturityDate: form.maturityDate || null, liquidity: form.liquidity, fgc: form.fgc, note: form.note || null,
       ...(isTd ? { tdTitle: form.tdTitle, quantity: num(form.quantity) } : {}),
     };
     const r = await fetch(editing ? `/api/fixed-income/${editing}` : "/api/fixed-income", { method: editing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -57,19 +58,22 @@ export default function RendaFixaPage() {
   const startEdit = (i: FixedIncomeRow) => {
     setErr(null);
     setEditing(i.id);
-    setForm({ kind: i.kind, issuer: i.issuer, label: i.label ?? "", indexer: i.indexer, rate: String(i.rate), principal: String(i.principal), startDate: i.startDate, maturityDate: i.maturityDate, liquidity: i.liquidity, fgc: i.fgc, note: i.note ?? "", tdTitle: i.tdTitle ?? "", quantity: i.quantity ? String(i.quantity) : "" });
+    setForm({ kind: i.kind, issuer: i.issuer, label: i.label ?? "", indexer: i.indexer, rate: String(i.rate), principal: String(i.principal), startDate: i.startDate, maturityDate: i.maturityDate ?? "", liquidity: i.liquidity, fgc: i.fgc, note: i.note ?? "", tdTitle: i.tdTitle ?? "", quantity: i.quantity ? String(i.quantity) : "" });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const cancelEdit = () => { setEditing(null); setErr(null); setForm(emptyForm); };
 
-  const redeem = async () => {
+  const redeem = async (force = false) => {
     if (!redeeming) return;
     setErr(null);
+    setAskTotal(null);
     const r = await fetch(`/api/fixed-income/${redeeming.id}/redeem`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ date: redeeming.date, ...(redeeming.net.trim() ? { net: num(redeeming.net) } : {}) }),
+      body: JSON.stringify({ date: redeeming.date, partial: redeeming.partial, force, ...(redeeming.net.trim() ? { net: num(redeeming.net) } : {}) }),
     });
-    if (!r.ok) return setErr((await r.json()).error ?? "Erro");
+    const j = await r.json();
+    if (r.status === 409 && j.code === "LOOKS_PARTIAL") return setAskTotal(j.error);
+    if (!r.ok) return setErr(j.error ?? "Erro");
     setRedeeming(null);
     load();
   };
@@ -79,7 +83,7 @@ export default function RendaFixaPage() {
   const { items, summary } = data;
   const active = items.filter((i) => !i.redeemedAt);
   const done = items.filter((i) => i.redeemedAt);
-  const soon = active.filter((i) => i.value && !i.value.matured && i.value.daysToMaturity <= 30);
+  const soon = active.filter((i) => i.maturityDate && i.value && i.value.daysToMaturity !== null && !i.value.matured && i.value.daysToMaturity <= 30);
   const label = rowLabel;
   const redeemingRow = redeeming ? items.find((i) => i.id === redeeming.id) : undefined;
 
@@ -97,7 +101,7 @@ export default function RendaFixaPage() {
       {summary.missing.length > 0 && <p className="text-xs text-yellow-400">Sem {summary.missing.join(", ")} no momento: as aplicações que dependem deles aparecem pelo valor aplicado até a consulta funcionar.</p>}
       {summary.stale && <p className="text-xs text-yellow-400">Uma das fontes (Banco Central ou Tesouro) não respondeu: usei a última cópia guardada.</p>}
       {soon.length > 0 && (
-        <p className="text-xs text-yellow-400">Vencem em até 30 dias: {soon.map((i) => `${label(i)} (${dateBr(i.maturityDate)})`).join("; ")}.</p>
+        <p className="text-xs text-yellow-400">Vencem em até 30 dias: {soon.map((i) => `${label(i)} (${dateBr(i.maturityDate!)})`).join("; ")}.</p>
       )}
       {summary.fgcAlerts.map((a) => (
         <p key={a.issuer} className="text-xs text-yellow-400">{a.issuer}: {fmtMoney(a.net)} com garantia do FGC, perto do limite de {fmtMoney(FGC_LIMIT)} por CPF e instituição.</p>
@@ -130,7 +134,7 @@ export default function RendaFixaPage() {
               <F label={`Taxa — ${rateHint(form.indexer)}`}><input className="input w-full" inputMode="decimal" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} required /></F>
               <F label="Valor aplicado (R$)"><input className="input w-full" inputMode="decimal" value={form.principal} onChange={(e) => setForm({ ...form, principal: e.target.value })} required /></F>
               <F label="Data da aplicação"><input className="input w-full" type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} required /></F>
-              <F label="Vencimento"><input className="input w-full" type="date" value={form.maturityDate} onChange={(e) => setForm({ ...form, maturityDate: e.target.value })} required /></F>
+              <F label="Vencimento (opcional)"><input className="input w-full" type="date" value={form.maturityDate} onChange={(e) => setForm({ ...form, maturityDate: e.target.value })} /></F>
               <F label="Liquidez"><select className="input w-full" value={form.liquidity} onChange={(e) => setForm({ ...form, liquidity: e.target.value })}><option value="MATURITY">No vencimento</option><option value="DAILY">Diária</option></select></F>
               <label className="flex items-center gap-2 text-sm pb-2"><input type="checkbox" checked={form.fgc} onChange={(e) => setForm({ ...form, fgc: e.target.checked })} /> Coberto pelo FGC</label>
             </>
@@ -147,12 +151,28 @@ export default function RendaFixaPage() {
       {redeemingRow && redeeming && (
         <section className="card p-4 space-y-3 border-accent">
           <h2 className="font-semibold">Resgatar: {label(redeemingRow)}</h2>
+          <div className="flex gap-4 text-sm" role="radiogroup" aria-label="Tipo de resgate">
+            <label className="flex items-center gap-2"><input type="radio" checked={!redeeming.partial} onChange={() => { setAskTotal(null); setRedeeming({ ...redeeming, partial: false }); }} /> Resgate total</label>
+            <label className="flex items-center gap-2"><input type="radio" checked={redeeming.partial} onChange={() => { setAskTotal(null); setRedeeming({ ...redeeming, partial: true }); }} /> Resgate parcial</label>
+          </div>
           <div className="flex items-end gap-3 flex-wrap text-sm">
             <F label="Data do resgate"><input className="input" type="date" value={redeeming.date} onChange={(e) => setRedeeming({ ...redeeming, date: e.target.value })} /></F>
-            <F label="Valor líquido recebido (opcional)"><input className="input" inputMode="decimal" placeholder="deixe vazio para usar a estimativa" value={redeeming.net} onChange={(e) => setRedeeming({ ...redeeming, net: e.target.value })} /></F>
-            <button className="btn" onClick={redeem}>Confirmar resgate</button>
-            <button className="btn-ghost" onClick={() => setRedeeming(null)}>Cancelar</button>
+            <F label={redeeming.partial ? "Valor líquido resgatado (R$)" : "Valor líquido recebido (opcional)"}>
+              <input className="input" inputMode="decimal" placeholder={redeeming.partial ? "quanto você retirou" : "deixe vazio para usar a estimativa"} value={redeeming.net} onChange={(e) => setRedeeming({ ...redeeming, net: e.target.value })} required={redeeming.partial} />
+            </F>
+            <button className="btn" onClick={() => redeem()}>{redeeming.partial ? "Confirmar resgate parcial" : "Confirmar resgate total"}</button>
+            <button className="btn-ghost" onClick={() => { setRedeeming(null); setAskTotal(null); }}>Cancelar</button>
           </div>
+          {redeemingRow.value && <p className="text-xs text-muted">Saldo líquido estimado hoje: {fmtMoney(redeemingRow.value.net)}. {redeeming.partial ? "Só essa parte sai; o restante continua aplicado com as mesmas condições." : "O resgate total encerra a aplicação inteira."}</p>}
+          {askTotal && (
+            <div className="text-sm text-yellow-400 space-y-2">
+              <p>{askTotal}</p>
+              <div className="flex gap-3">
+                <button className="btn" onClick={() => { setAskTotal(null); setRedeeming({ ...redeeming, partial: true }); }}>Foi parcial</button>
+                <button className="btn-ghost" onClick={() => redeem(true)}>Foi total mesmo</button>
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -169,8 +189,8 @@ export default function RendaFixaPage() {
                 <span>{i.indexer === "TESOURO" ? `${i.tdTitle ?? "Tesouro"} · ${i.quantity ?? "?"} título(s)` : `${i.issuer} · ${describeRate(i.indexer, i.rate)}`}</span>
                 <span className={tone(i.value?.netYieldPct)}>{i.value ? fmtPct(i.value.netYieldPct) : "—"}</span>
               </div>
-              <div className="text-xs text-muted">Aplicado {fmtMoney(i.principal)} em {dateBr(i.startDate)} · vence {dateBr(i.maturityDate)}{i.value ? ` (${i.value.matured ? "vencida" : `${i.value.daysToMaturity} d`})` : ""}</div>
-              <Actions i={i} onEdit={() => startEdit(i)} onRedeem={() => setRedeeming({ id: i.id, date: today(), net: "" })} onDelete={() => act(`/api/fixed-income/${i.id}`, { method: "DELETE" }, "Excluir esta aplicação?")} />
+              <div className="text-xs text-muted">Aplicado {fmtMoney(i.principal)} em {dateBr(i.startDate)} · {i.maturityDate ? `vence ${dateBr(i.maturityDate)}${i.value && i.value.daysToMaturity !== null ? ` (${i.value.matured ? "vencida" : `${i.value.daysToMaturity} d`})` : ""}` : "sem vencimento"}</div>
+              <Actions i={i} onEdit={() => startEdit(i)} onRedeem={() => { setAskTotal(null); setErr(null); setRedeeming({ id: i.id, date: today(), net: "", partial: false }); }} onDelete={() => act(`/api/fixed-income/${i.id}`, { method: "DELETE" }, "Excluir esta aplicação?")} />
             </li>
           ))}
           {active.length === 0 && <li className="text-muted py-3">Nenhuma aplicação ativa.</li>}
@@ -187,8 +207,8 @@ export default function RendaFixaPage() {
                   <td className="num">{i.value ? fmtMoney(i.value.gross) : "—"}</td>
                   <td className="num">{fmtMoney(i.value?.net ?? i.principal)}</td>
                   <td className={`num ${tone(i.value?.netYieldPct)}`}>{i.value ? fmtPct(i.value.netYieldPct) : "—"}</td>
-                  <td className="num">{dateBr(i.maturityDate)}<span className="block text-xs text-muted">{i.value ? (i.value.matured ? "vencida" : `${i.value.daysToMaturity} dias`) : ""}</span></td>
-                  <td><Actions i={i} onEdit={() => startEdit(i)} onRedeem={() => setRedeeming({ id: i.id, date: today(), net: "" })} onDelete={() => act(`/api/fixed-income/${i.id}`, { method: "DELETE" }, "Excluir esta aplicação?")} /></td>
+                  <td className="num">{i.maturityDate ? dateBr(i.maturityDate) : <span className="text-muted">sem vencimento</span>}<span className="block text-xs text-muted">{i.value && i.value.daysToMaturity !== null ? (i.value.matured ? "vencida" : `${i.value.daysToMaturity} dias`) : ""}</span></td>
+                  <td><Actions i={i} onEdit={() => startEdit(i)} onRedeem={() => { setAskTotal(null); setErr(null); setRedeeming({ id: i.id, date: today(), net: "", partial: false }); }} onDelete={() => act(`/api/fixed-income/${i.id}`, { method: "DELETE" }, "Excluir esta aplicação?")} /></td>
                 </tr>
               ))}
               {active.length === 0 && <tr><td className="text-muted py-3" colSpan={8}>Nenhuma aplicação ativa.</td></tr>}

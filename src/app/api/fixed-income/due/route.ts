@@ -18,8 +18,8 @@ export async function GET() {
       label: rowLabel(r),
       issuer: r.issuer,
       principal: r.principal,
-      maturityDate: r.maturityDate.toISOString().slice(0, 10),
-      daysLeft: Math.ceil((+r.maturityDate - Date.now()) / 86_400_000),
+      maturityDate: r.maturityDate!.toISOString().slice(0, 10), // the query only returns rows with a maturity date
+      daysLeft: Math.ceil((+r.maturityDate! - Date.now()) / 86_400_000),
     })),
   );
 }

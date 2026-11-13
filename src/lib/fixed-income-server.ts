@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { getCdiSeries, getIpcaSeries, getTesouroSeries, tesouroKeyOf } from "./rates";
-import { FGC_LIMIT, valueOf, type FixedIncomeValue, type Indexer, type Kind, type Rates, type Terms } from "./fixed-income";
+import { FGC_LIMIT, OPEN_END, valueOf, type FixedIncomeValue, type Indexer, type Kind, type Rates, type Terms } from "./fixed-income";
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -16,7 +16,7 @@ export interface FixedIncomeRow {
   rate: number;
   principal: number;
   startDate: string;
-  maturityDate: string;
+  maturityDate: string | null; // null: sem vencimento
   liquidity: string;
   fgc: boolean;
   note: string | null;
@@ -63,19 +63,21 @@ export async function loadRates(rows: RateNeeds[]): Promise<{ rates: Rates; stal
   };
 }
 
-export const termsOf = (r: { kind: string; indexer: string; rate: number; principal: number; startDate: Date; maturityDate: Date; quantity: number | null; tdTitle: string | null }): Terms => ({
+export const termsOf = (r: { kind: string; indexer: string; rate: number; principal: number; startDate: Date; maturityDate: Date | null; quantity: number | null; tdTitle: string | null }): Terms => ({
   kind: r.kind as Kind, indexer: r.indexer as Indexer, rate: r.rate, principal: r.principal,
-  startDate: day(r.startDate), maturityDate: day(r.maturityDate), quantity: r.quantity, tdTitle: r.tdTitle,
+  startDate: day(r.startDate), maturityDate: r.maturityDate ? day(r.maturityDate) : OPEN_END, quantity: r.quantity, tdTitle: r.tdTitle,
 });
 
 export async function loadFixedIncome(asOf = day(new Date())): Promise<{ items: FixedIncomeRow[]; summary: FixedIncomeSummary }> {
-  const rows = await db.fixedIncome.findMany({ orderBy: [{ redeemedAt: "asc" }, { maturityDate: "asc" }] });
+  const rows = (await db.fixedIncome.findMany({ orderBy: [{ redeemedAt: "asc" }, { createdAt: "asc" }] })).sort(
+    (a, b) => Number(!!a.redeemedAt) - Number(!!b.redeemedAt) || (a.maturityDate?.getTime() ?? Infinity) - (b.maturityDate?.getTime() ?? Infinity),
+  ); // sem vencimento por último
   const active = rows.filter((r) => !r.redeemedAt);
-  const { rates, stale, missing } = await loadRates(active.map((r) => ({ indexer: r.indexer, startDate: day(r.startDate), maturityDate: day(r.maturityDate), tdTitle: r.tdTitle })));
+  const { rates, stale, missing } = await loadRates(active.map((r) => ({ indexer: r.indexer, startDate: day(r.startDate), maturityDate: r.maturityDate ? day(r.maturityDate) : OPEN_END, tdTitle: r.tdTitle })));
 
   const items: FixedIncomeRow[] = rows.map((r) => ({
     id: r.id, kind: r.kind as Kind, issuer: r.issuer, label: r.label, indexer: r.indexer as Indexer, rate: r.rate, principal: r.principal,
-    startDate: day(r.startDate), maturityDate: day(r.maturityDate), liquidity: r.liquidity, fgc: r.fgc, note: r.note,
+    startDate: day(r.startDate), maturityDate: r.maturityDate ? day(r.maturityDate) : null, liquidity: r.liquidity, fgc: r.fgc, note: r.note,
     tdTitle: r.tdTitle, quantity: r.quantity,
     redeemedAt: r.redeemedAt ? day(r.redeemedAt) : null, redeemedNet: r.redeemedNet, dueSeenAt: r.dueSeenAt ? day(r.dueSeenAt) : null,
     value: r.redeemedAt ? null : valueOf(termsOf(r), asOf, rates),
