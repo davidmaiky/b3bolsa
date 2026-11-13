@@ -1,9 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, authEnabled, sessionSecret, verifyToken } from "@/lib/auth";
 
+const PUBLIC_FILES = new Set(["/api/health", "/manifest.webmanifest", "/sw.js", "/offline.html", "/icon.png"]);
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (pathname === "/api/health") return NextResponse.next();
+  // public: health probe and the files the browser fetches without cookies to install the app
+  if (PUBLIC_FILES.has(pathname) || pathname.startsWith("/icons/")) return NextResponse.next();
 
   if (!authEnabled()) {
     // In production the site must not be open by accident: refuse to serve until a password is set.

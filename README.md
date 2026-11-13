@@ -60,6 +60,16 @@ Para testar a chave da LSE sem subir o app (consulta `/v3/usage` e mostra 10 s d
 LSE_API_KEY=sua_chave npm run lse:smoke
 ```
 
+## Instalar no celular (PWA)
+
+O site pode ser instalado como app, com ícone na tela inicial e abertura em tela cheia:
+
+- **Android / Chrome**: use o botão "Instalar app" no topo da página, ou o menu do navegador → "Instalar app".
+- **iPhone / Safari**: Compartilhar → "Adicionar à Tela de Início".
+- **Computador (Chrome/Edge)**: ícone de instalação na barra de endereço.
+
+A instalação exige **HTTPS** (como no Easypanel, com domínio) ou `localhost`; pelo IP da rede local em HTTP puro o navegador não oferece. O service worker só é ativado em produção e **não guarda dados financeiros**: páginas e API vão sempre à rede. Sem conexão, aparece uma página avisando. Os ícones são gerados por `node scripts/make-icons.mjs`.
+
 ## Publicar em um servidor
 
 O projeto vem com `Dockerfile` e um guia passo a passo para o **Easypanel**: veja [DEPLOY.md](DEPLOY.md). Em produção o site só atende depois de definir `APP_PASSWORD`.

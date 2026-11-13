@@ -64,7 +64,11 @@ sqlite3 /data/app.db ".backup '/data/backup-$(date +%F).db'"
 
 Isso gera uma cópia consistente mesmo com o app rodando. Baixe-a do servidor (ou agende o comando em **Cron Jobs**) e guarde fora da máquina. Apague cópias antigas de tempos em tempos para não encher o volume.
 
-## 6. Observações de produção
+## 6. Instalar no celular
+
+Com o domínio em HTTPS, o app pode ser instalado (PWA). No Android, "Instalar app" no navegador ou o botão no topo; no iPhone, Safari → Compartilhar → "Adicionar à Tela de Início". O manifest, os ícones e o service worker são liberados sem login (o navegador os busca sem cookie); todo o resto continua atrás da senha.
+
+## 7. Observações de produção
 
 - **HTTPS**: o Easypanel termina o TLS. O app marca o cookie de sessão como `Secure` quando o proxy informa HTTPS (`x-forwarded-proto`).
 - **Bloqueio de tentativas**: 5 senhas erradas bloqueiam o IP por 5 minutos.
