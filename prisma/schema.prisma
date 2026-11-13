@@ -21,6 +21,8 @@ model Asset {
   suggestions  Suggestion[]
   dividends    Dividend[]
   alerts       Alert[]
+  peerCache    PeerCache?
+  fiiInfo      FiiInfo?
 }
 
 model Transaction {
@@ -95,4 +97,33 @@ model Alert {
   createdAt    DateTime  @default(now())
 
   @@index([active])
+}
+
+// Perfil do investidor (uma linha, id "me"): vai no prompt do Gemini.
+model InvestorProfile {
+  id               String   @id @default("me")
+  risk             String // CONSERVADOR | MODERADO | ARROJADO
+  objective        String // RENDA | CRESCIMENTO | BALANCEADO | PRESERVACAO
+  horizonYears     Int
+  maxPositionPct   Float? // concentração máxima desejada por ativo (%)
+  notes            String?
+  updatedAt        DateTime @updatedAt
+}
+
+// Comparação com pares (mediana de P/L, P/VP, DY...) guardada por ativo para não repetir chamadas ao Yahoo.
+model PeerCache {
+  assetId   String   @id
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  data      String // JSON
+  updatedAt DateTime @updatedAt
+}
+
+// Dados de FII que o Yahoo não traz (vêm do relatório gerencial mensal do fundo): preenchidos à mão.
+model FiiInfo {
+  assetId           String   @id
+  asset             Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  vacancyPhysical   Float? // %
+  vacancyFinancial  Float? // %
+  segment           String?
+  updatedAt         DateTime @updatedAt
 }

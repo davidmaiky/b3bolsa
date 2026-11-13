@@ -35,8 +35,8 @@ export async function loadPositions(): Promise<PositionRow[]> {
 }
 
 /** BRL value of each held position using the latest known quotes. */
-export function weightsBrl(rows: PositionRow[]) {
-  const fx = priceService.quotes.get("USD:FX")?.price ?? 0;
+export function weightsBrl(rows: PositionRow[], fxRate?: number) {
+  const fx = fxRate ?? priceService.quotes.get("USD:FX")?.price ?? 0;
   const values: Record<string, number> = {};
   let total = 0;
   for (const r of rows) {

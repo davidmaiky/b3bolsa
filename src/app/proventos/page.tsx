@@ -7,6 +7,7 @@ import { DIVIDEND_LABEL, DIVIDEND_TYPES, JCP_TAX_RATE, monthlyNet, netOf, netSin
 import { fmtMoney, fmtNum, fmtPct } from "@/lib/format";
 import { ASSET_CLASS_LABEL, type AssetClass } from "@/lib/types";
 import type { PositionRow } from "@/lib/server-portfolio";
+import { hasFundamentals } from "@/lib/classify";
 
 interface Asset { id: string; ticker: string; assetClass: AssetClass; currency: string }
 interface Div { id: string; type: string; date: string; perShare: number; quantity: number; tax: number; source: string; note: string | null; asset: Asset }
@@ -31,7 +32,7 @@ export default function ProventosPage() {
   }, []);
   useEffect(load, [load]);
 
-  const payers = positions.filter((p) => p.assetClass === "B3" || p.assetClass === "US");
+  const payers = positions.filter((p) => hasFundamentals(p.assetClass));
   const rate = (cur: string) => (cur === "USD" ? fx ?? NaN : 1);
 
   // default asset + quantity = current position

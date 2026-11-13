@@ -56,6 +56,18 @@ class PriceService extends EventEmitter {
     }
   }
 
+  /** Resolves with the quote as soon as it exists (or undefined after `ms`). */
+  waitFor(key: string, ms = 10_000): Promise<Quote | undefined> {
+    const have = this.quotes.get(key);
+    if (have) return Promise.resolve(have);
+    return new Promise((resolve) => {
+      const done = (q?: Quote) => { clearTimeout(t); this.off("quote", on); resolve(q); };
+      const on = (k: string, q: Quote) => { if (k === key) done(q); };
+      const t = setTimeout(() => done(undefined), ms);
+      this.on("quote", on);
+    });
+  }
+
   get(a: AssetRef): Quote | undefined {
     return this.quotes.get(a.ticker.toUpperCase() + ":" + a.assetClass);
   }
@@ -115,7 +127,7 @@ class PriceService extends EventEmitter {
           changePct: yq.changePct,
           ts: yq.ts,
           source: "yahoo",
-          delayed: asset.assetClass === "B3",
+          delayed: asset.assetClass === "B3" || asset.assetClass === "FII" || asset.assetClass === "ETF",
         });
       }
     } catch (e) {

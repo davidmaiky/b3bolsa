@@ -1,7 +1,9 @@
-export type AssetClass = "B3" | "US" | "CRYPTO" | "FX";
+export type AssetClass = "B3" | "FII" | "ETF" | "US" | "CRYPTO" | "FX";
 
 export const ASSET_CLASS_LABEL: Record<AssetClass, string> = {
   B3: "Ações B3",
+  FII: "FIIs",
+  ETF: "ETFs B3",
   US: "Ações EUA",
   CRYPTO: "Criptomoedas",
   FX: "Moedas",

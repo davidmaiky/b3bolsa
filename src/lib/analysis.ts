@@ -4,12 +4,17 @@ import { yahooSymbol } from "./lse/symbols";
 import { momentum, valuation, type Momentum, type ValuationSignals } from "./indicators";
 import { priceService } from "./prices";
 import { computePosition } from "./portfolio";
+import { hasFundamentals } from "./classify";
+import { getPeers } from "./peers-server";
+import type { PeerComparison } from "./peers";
+import { getFiiMetrics } from "./fii-server";
+import type { FiiMetrics } from "./fii";
 import type { AssetClass, AssetRef } from "./types";
 
 const FUND_TTL_MS = 24 * 3600_000;
 
 export async function getFundamentals(asset: { id: string } & AssetRef, force = false): Promise<Fundamentals | null> {
-  if (asset.assetClass !== "B3" && asset.assetClass !== "US") return null;
+  if (!hasFundamentals(asset.assetClass)) return null;
   const cached = await db.fundamentals.findUnique({ where: { assetId: asset.id } });
   if (cached && !force && Date.now() - +cached.updatedAt < FUND_TTL_MS) return JSON.parse(cached.data);
   try {
@@ -37,6 +42,8 @@ export interface AssetAnalysis {
   fundamentals: Fundamentals | null;
   valuation: ValuationSignals | null;
   momentum: Momentum;
+  peers: PeerComparison | null;
+  fii: FiiMetrics | null; // só FIIs
 }
 
 export interface AssetAnalysisWithHistory extends AssetAnalysis {
@@ -55,7 +62,9 @@ export async function analyzeAsset(assetId: string): Promise<AssetAnalysisWithHi
       return [] as { date: string; close: number }[];
     }),
   ]);
+  const peers = await getPeers({ id: asset.id, ...ref }, fundamentals).catch(() => null);
   const price = q?.price ?? fundamentals?.price;
+  const fii = await getFiiMetrics({ id: asset.id, ...ref }, fundamentals, price).catch(() => null);
   const mom: Momentum = hist.length ? momentum(hist.map((h) => h.close), ref.assetClass === "CRYPTO" ? 365 : 252) : {};
 
   const pos = asset.transactions.length ? computePosition(asset.transactions) : null;
@@ -75,8 +84,10 @@ export async function analyzeAsset(assetId: string): Promise<AssetAnalysisWithHi
           }
         : null,
     fundamentals,
-    valuation: fundamentals ? valuation(fundamentals, price) : null,
+    valuation: fundamentals && (ref.assetClass === "B3" || ref.assetClass === "US") ? valuation(fundamentals, price) : null,
     momentum: mom,
+    peers,
+    fii,
     history: hist,
   };
 }

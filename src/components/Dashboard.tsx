@@ -9,7 +9,7 @@ import { ASSET_CLASS_LABEL, type AssetClass, type Quote } from "@/lib/types";
 import type { PositionRow } from "@/lib/server-portfolio";
 import { AddAsset } from "./AddAsset";
 
-const CLASS_COLOR: Record<AssetClass, string> = { B3: "#22c55e", US: "#3b82f6", CRYPTO: "#f59e0b", FX: "#a855f7" };
+const CLASS_COLOR: Record<AssetClass, string> = { B3: "#22c55e", FII: "#14b8a6", ETF: "#eab308", US: "#3b82f6", CRYPTO: "#f59e0b", FX: "#a855f7" };
 
 export function Dashboard() {
   const [positions, setPositions] = useState<PositionRow[] | null>(null);

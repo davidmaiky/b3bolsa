@@ -6,6 +6,8 @@ import { fmtMoney, fmtNum, fmtPct, tone } from "@/lib/format";
 import { ASSET_CLASS_LABEL, type AssetClass } from "@/lib/types";
 import type { AssetAnalysis } from "@/lib/analysis";
 import { SuggestionCard, type SuggestionRow } from "@/components/SuggestionCard";
+import { FiiCard } from "@/components/FiiCard";
+import { isB3Listed } from "@/lib/classify";
 
 interface Data {
   asset: { id: string; ticker: string; name: string | null; assetClass: AssetClass; currency: string; suggestions: Omit<SuggestionRow, "asset">[] };
@@ -39,6 +41,14 @@ export default function AtivoPage({ params }: { params: Promise<{ id: string }> 
   const v = a.valuation;
   const m = a.momentum;
 
+  const reclassify = async (assetClass: string) => {
+    setErr(null);
+    const r = await fetch(`/api/assets/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ assetClass }) });
+    if (!r.ok) setErr((await r.json()).error ?? "Erro");
+    setD(null);
+    load();
+  };
+
   const runAi = async () => {
     setBusy(true);
     setErr(null);
@@ -58,6 +68,15 @@ export default function AtivoPage({ params }: { params: Promise<{ id: string }> 
         <div className="num text-xl sm:text-2xl">{fmtMoney(price, cur)}</div>
         <div className={`num ${tone(q?.changePct)}`}>{fmtPct(q?.changePct)}</div>
         <span className="text-xs text-muted">{q?.source === "lse-ws" ? "LSE tempo real" : q?.delayed ? "Yahoo · atraso ~15 min" : q?.source ?? ""}</span>
+        {isB3Listed(asset.assetClass) && (
+          <label className="text-xs text-muted flex items-center gap-2">Classe
+            <select className="input" value={asset.assetClass} onChange={(e) => reclassify(e.target.value)}>
+              <option value="B3">{ASSET_CLASS_LABEL.B3}</option>
+              <option value="FII">{ASSET_CLASS_LABEL.FII}</option>
+              <option value="ETF">{ASSET_CLASS_LABEL.ETF}</option>
+            </select>
+          </label>
+        )}
         <button className="btn sm:ml-auto w-full sm:w-auto" onClick={runAi} disabled={busy}>{busy ? "Analisando…" : "Analisar com IA"}</button>
       </header>
       {err && <p className="text-down text-sm">{err}</p>}
@@ -79,6 +98,7 @@ export default function AtivoPage({ params }: { params: Promise<{ id: string }> 
       </section>
 
       <div className="grid lg:grid-cols-3 gap-4">
+        {a.fii && <FiiCard assetId={asset.id} fii={a.fii} currency={cur} onSaved={load} />}
         {v && (
           <section className="card p-4">
             <h2 className="font-semibold mb-3">Valuation</h2>
@@ -98,7 +118,7 @@ export default function AtivoPage({ params }: { params: Promise<{ id: string }> 
             </ul>
           </section>
         )}
-        {f && (
+        {f && (asset.assetClass === "B3" || asset.assetClass === "US") && (
           <section className="card p-4">
             <h2 className="font-semibold mb-3">Fundamentos</h2>
             <Rows rows={[
@@ -116,6 +136,21 @@ export default function AtivoPage({ params }: { params: Promise<{ id: string }> 
               ["PEG", fmtNum(f.pegRatio, 2)],
               ["EV/EBITDA", fmtNum(f.evToEbitda, 1)],
             ]} />
+          </section>
+        )}
+        {a.peers && (
+          <section className="card p-4">
+            <h2 className="font-semibold mb-1">Comparação com pares</h2>
+            <p className="text-[11px] text-muted mb-3">{a.peers.nota}</p>
+            <Rows rows={[
+              ["P/L do ativo × mediana", `${fmtNum(f?.pe, 1)} × ${fmtNum(a.peers.median.pe, 1)}`],
+              ["P/L vs mediana", fmtPct(a.peers.vsMedianPct.pe, 0)],
+              ["P/VP do ativo × mediana", `${fmtNum(f?.pb, 2)} × ${fmtNum(a.peers.median.pb, 2)}`],
+              ["P/VP vs mediana", fmtPct(a.peers.vsMedianPct.pb, 0)],
+              ["Dividend yield mediano", fmtPct(a.peers.median.dy !== undefined ? a.peers.median.dy * 100 : undefined, 1, false)],
+              ["ROE mediano", fmtPct(a.peers.median.roe !== undefined ? a.peers.median.roe * 100 : undefined, 1, false)],
+            ]} />
+            <p className="text-xs text-muted mt-3">{a.peers.peers.map((p) => p.ticker).join(", ")}</p>
           </section>
         )}
         <section className="card p-4">

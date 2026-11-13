@@ -7,13 +7,13 @@ import { fmtMoney, fmtPct, tone } from "@/lib/format";
 import { ASSET_CLASS_LABEL, type AssetClass } from "@/lib/types";
 import type { PositionRow } from "@/lib/server-portfolio";
 
-const CLASSES: AssetClass[] = ["B3", "US", "CRYPTO", "FX"];
+const CLASSES: AssetClass[] = ["B3", "FII", "ETF", "US", "CRYPTO", "FX"];
 const num = (s: string) => Number(s.replace(",", ".")) || 0;
 
 export default function RebalanceamentoPage() {
   const [positions, setPositions] = useState<PositionRow[] | null>(null);
   const [saved, setSaved] = useState<Record<string, number>>({});
-  const [form, setForm] = useState<Record<string, string>>({ B3: "", US: "", CRYPTO: "", FX: "" });
+  const [form, setForm] = useState<Record<string, string>>({ B3: "", FII: "", ETF: "", US: "", CRYPTO: "", FX: "" });
   const [contribution, setContribution] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
@@ -71,7 +71,7 @@ export default function RebalanceamentoPage() {
           <h2 className="font-semibold">Meta de alocação (% do patrimônio)</h2>
           <span className={`num text-sm ${Math.abs(sum - 100) < 0.01 || sum === 0 ? "text-muted" : "text-down"}`}>soma {sum.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%</span>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end text-sm">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end text-sm">
           {CLASSES.map((c) => (
             <label key={c} className="block">
               <span className="text-xs text-muted block mb-1">{ASSET_CLASS_LABEL[c]}</span>

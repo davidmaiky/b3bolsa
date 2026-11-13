@@ -52,7 +52,7 @@ export function lseMapping(a: AssetRef): LseMapping | null {
 }
 
 export function yahooSymbol(a: AssetRef): string {
-  if (a.assetClass === "B3") return `${a.ticker.toUpperCase()}.SA`;
+  if (a.assetClass === "B3" || a.assetClass === "FII" || a.assetClass === "ETF") return `${a.ticker.toUpperCase()}.SA`;
   return lseMapping(a)!.yahooSymbol;
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computePosition, valuePosition } from "../portfolio";
+import { computePosition, findOversell, valuePosition } from "../portfolio";
 import { bazinCeiling, grahamValue, marginOfSafety, momentum, rsi, valuation } from "../indicators";
 
 describe("computePosition", () => {
@@ -56,5 +56,21 @@ describe("indicators", () => {
     const v = valuation({ price: 30, eps: 5, bookValuePerShare: 30, pe: 6, pb: 1, dividendRate: 3, roe: 0.18, debtToEquity: 50, currentRatio: 2 });
     expect(v.score).toBeGreaterThan(50);
     expect(v.grahamCriteria.every((c) => c.ok)).toBe(true);
+  });
+});
+
+describe("findOversell", () => {
+  const b = (date: string, quantity: number) => ({ type: "BUY", quantity, price: 1, date });
+  const s = (date: string, quantity: number) => ({ type: "SELL", quantity, price: 1, date });
+  it("accepts a consistent history, including buy and sell on the same day", () => {
+    expect(findOversell([b("2026-01-01", 10), s("2026-02-01", 10)])).toBeNull();
+    expect(findOversell([s("2026-01-01", 5), b("2026-01-01", 5)])).toBeNull();
+  });
+  it("flags a sale larger than the position on its date, even if later buys cover it", () => {
+    expect(findOversell([b("2026-03-01", 10), s("2026-02-01", 5)])).toBe("2026-02-01");
+    expect(findOversell([b("2026-01-01", 10), s("2026-02-01", 11)])).toBe("2026-02-01");
+  });
+  it("catches an edit that moves a buy after its sale", () => {
+    expect(findOversell([b("2026-02-10", 10), s("2026-02-01", 10)])).toBe("2026-02-01");
   });
 });

@@ -41,6 +41,21 @@ export function computePosition(txs: Tx[]): Position {
   return { quantity: qty, avgPrice: avg, cost: qty * avg, realizedPnl: realized, invested };
 }
 
+/**
+ * Walks the history in order (buys before sells on the same day) and returns the date (YYYY-MM-DD)
+ * of the first sale that is larger than the position held at that moment, or null if the history is valid.
+ */
+export function findOversell(txs: Tx[]): string | null {
+  const day = (d: Date | string) => new Date(d).toISOString().slice(0, 10);
+  const sorted = [...txs].sort((a, b) => day(a.date).localeCompare(day(b.date)) || (a.type === "BUY" ? -1 : 1) - (b.type === "BUY" ? -1 : 1));
+  let qty = 0;
+  for (const t of sorted) {
+    qty += t.type === "BUY" ? t.quantity : -t.quantity;
+    if (qty < -1e-9) return day(t.date);
+  }
+  return null;
+}
+
 export interface Valued extends Position {
   price?: number;
   marketValue?: number; // asset currency

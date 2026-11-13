@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { findOversell } from "@/lib/portfolio";
+import { invalidateEvolution } from "@/lib/evolution";
 
 export const runtime = "nodejs";
 
@@ -23,11 +25,11 @@ export async function POST(req: Request) {
   const parsed = Body.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
   const d = parsed.data;
-  if (d.type === "SELL") {
-    const txs = await db.transaction.findMany({ where: { assetId: d.assetId } });
-    const held = txs.reduce((s, t) => s + (t.type === "BUY" ? t.quantity : -t.quantity), 0);
-    if (d.quantity > held + 1e-9) return NextResponse.json({ error: `Quantidade maior que a posição (${held})` }, { status: 400 });
-  }
+  // the whole history must stay valid: a sale cannot be larger than the position held on its date
+  const existing = await db.transaction.findMany({ where: { assetId: d.assetId } });
+  const bad = findOversell([...existing, { type: d.type, quantity: d.quantity, price: d.price, fees: d.fees, date: d.date }]);
+  if (bad) return NextResponse.json({ error: `Quantidade maior que a posição em ${bad.slice(8, 10)}/${bad.slice(5, 7)}/${bad.slice(0, 4)}` }, { status: 400 });
   const tx = await db.transaction.create({ data: { ...d, date: new Date(d.date) } });
+  invalidateEvolution();
   return NextResponse.json(tx);
 }

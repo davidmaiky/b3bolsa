@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { yahooSearch } from "@/lib/yahoo";
+import { classifyB3 } from "@/lib/classify";
 
 export const runtime = "nodejs";
 
-const CLASS_BY_TYPE = (s: { symbol: string; type: string }) => {
-  if (s.symbol.endsWith(".SA")) return "B3";
+const CLASS_BY_TYPE = (s: { symbol: string; type: string; name: string }) => {
+  if (s.symbol.endsWith(".SA")) return classifyB3(s.symbol.replace(/\.SA$/, ""), s.type, s.name);
   if (s.type === "CRYPTOCURRENCY") return "CRYPTO";
   if (s.type === "CURRENCY") return "FX";
   if (s.type === "EQUITY" || s.type === "ETF") return s.symbol.includes(".") ? null : "US";

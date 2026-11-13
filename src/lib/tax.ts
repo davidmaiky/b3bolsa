@@ -3,16 +3,17 @@ import { forwardFill, type Close } from "./series";
 
 /** Estimativa de IR sobre ganho de capital. Não substitui contador: veja os avisos devolvidos em `warnings`. */
 
-export type TaxCategory = "ACAO" | "FII" | "CRIPTO" | "EXTERIOR";
-export const CATEGORY_LABEL: Record<TaxCategory, string> = { ACAO: "Ações (B3)", FII: "FII/ETF (B3)", CRIPTO: "Criptomoedas", EXTERIOR: "Ativos no exterior" };
+export type TaxCategory = "ACAO" | "FII" | "ETF" | "CRIPTO" | "EXTERIOR";
+export const CATEGORY_LABEL: Record<TaxCategory, string> = { ACAO: "Ações (B3)", FII: "FIIs", ETF: "ETFs (B3)", CRIPTO: "Criptomoedas", EXTERIOR: "Ativos no exterior" };
 
 export const ACAO_EXEMPT_SALES = 20_000; // vendas mensais de ações até este valor: ganho isento
 export const CRIPTO_EXEMPT_SALES = 35_000;
-export const RATE = { ACAO: 0.15, FII: 0.2, CRIPTO: 0.15, EXTERIOR: 0.15 } as const;
+export const RATE = { ACAO: 0.15, FII: 0.2, ETF: 0.15, CRIPTO: 0.15, EXTERIOR: 0.15 } as const;
 
-/** B3 tickers ending in 11 are treated as FII/ETF (20%, no exemption). Units of companies end in 11 too: check the warning. */
-export function categoryOf(assetClass: AssetClass, ticker: string): TaxCategory | null {
-  if (assetClass === "B3") return /11$/.test(ticker.toUpperCase()) ? "FII" : "ACAO";
+export function categoryOf(assetClass: AssetClass): TaxCategory | null {
+  if (assetClass === "B3") return "ACAO";
+  if (assetClass === "FII") return "FII";
+  if (assetClass === "ETF") return "ETF";
   if (assetClass === "CRYPTO") return "CRIPTO";
   if (assetClass === "US") return "EXTERIOR";
   return null; // moedas: fora do escopo
@@ -33,7 +34,7 @@ export interface Sale {
 
 export interface MonthRow {
   month: string; // YYYY-MM
-  category: "ACAO" | "FII" | "CRIPTO";
+  category: "ACAO" | "FII" | "ETF" | "CRIPTO";
   sales: number;
   gain: number;
   exempt: boolean;
@@ -82,7 +83,7 @@ function replay(assets: TaxAsset[], fx: Close[]): Replay {
   const states = assets.map((a) => ({ a, txs: [...a.txs].sort((x, y) => +new Date(x.date) - +new Date(y.date) || (x.type === "BUY" ? -1 : 1)) }));
 
   for (const { a, txs } of states) {
-    const cat = categoryOf(a.assetClass, a.ticker);
+    const cat = categoryOf(a.assetClass);
     if (!cat) continue;
     let qty = 0;
     let costBrl = 0;
@@ -124,7 +125,7 @@ function replay(assets: TaxAsset[], fx: Close[]): Replay {
           costBrl -= costBrl * f; costNative -= costNative * f; qty -= q;
         }
       }
-      if (qty > 1e-12) out.push({ ticker: a.ticker, assetClass: a.assetClass, category: categoryOf(a.assetClass, a.ticker), quantity: qty, costBrl, costNative, currency: a.currency });
+      if (qty > 1e-12) out.push({ ticker: a.ticker, assetClass: a.assetClass, category: categoryOf(a.assetClass), quantity: qty, costBrl, costNative, currency: a.currency });
     }
     return out.sort((x, y) => x.ticker.localeCompare(y.ticker));
   };
@@ -137,7 +138,7 @@ export function computeTax(assets: TaxAsset[], fx: Close[]): TaxResult & { holdi
 
   // ---- monthly: ações (15%, isenção até R$ 20 mil), FII/ETF (20%), cripto (15%, isenção até R$ 35 mil)
   const months: MonthRow[] = [];
-  for (const cat of ["ACAO", "FII", "CRIPTO"] as const) {
+  for (const cat of ["ACAO", "FII", "ETF", "CRIPTO"] as const) {
     const byMonth = new Map<string, { sales: number; gain: number }>();
     for (const s of sales.filter((x) => x.category === cat)) {
       const k = s.date.slice(0, 7);
@@ -178,8 +179,9 @@ export function computeTax(assets: TaxAsset[], fx: Close[]): TaxResult & { holdi
     return { year, gain: r.gain, loss: r.loss, net, tax: Math.max(0, net) * RATE.EXTERIOR };
   });
 
-  const fiis = [...new Set(assets.filter((a) => categoryOf(a.assetClass, a.ticker) === "FII").map((a) => a.ticker))];
-  if (fiis.length) warnings.push(`${fiis.join(", ")}: tickers terminados em 11 foram tratados como FII/ETF (20%, sem isenção). Se for unit de empresa, o tratamento correto é o de ações (15%, isenção até R$ 20 mil/mês).`);
+  // units (TAEE11, SANB11) also end in 11, so this is only a hint to check the class
+  const maybeFund = [...new Set(assets.filter((a) => a.assetClass === "B3" && /11$/.test(a.ticker.toUpperCase())).map((a) => a.ticker))];
+  if (maybeFund.length) warnings.push(`${maybeFund.join(", ")}: cadastrado como ação (15%, isenção até R$ 20 mil/mês). Se for FII ou ETF, mude a classe do ativo: FII paga 20% sem isenção e ETF 15% sem isenção.`);
   if (dayTrades.length) warnings.push(`${dayTrades.join(", ")}: houve compra e venda no mesmo dia. Day trade paga 20% sem isenção e não foi separado aqui.`);
   if (assets.some((a) => a.assetClass === "FX" && a.txs.length)) warnings.push("Moedas (USD, EUR…) não entram no cálculo.");
   return { months, years, sales, warnings, holdingsAt: holdings };

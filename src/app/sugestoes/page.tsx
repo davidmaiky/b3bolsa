@@ -1,11 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
 import { SuggestionCard, type SuggestionRow } from "@/components/SuggestionCard";
+import { ProfileCard } from "@/components/ProfileCard";
 
 export default function SugestoesPage() {
   const [rows, setRows] = useState<SuggestionRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
 
   const load = () => fetch("/api/suggestions").then((r) => r.json()).then(setRows);
   useEffect(() => { load(); }, []);
@@ -13,10 +15,14 @@ export default function SugestoesPage() {
   const run = async () => {
     setBusy(true);
     setErr(null);
+    setInfo(null);
     const r = await fetch("/api/suggestions", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     const d = await r.json();
     setBusy(false);
     if (!r.ok) return setErr(d.error ?? "Erro");
+    if (d.fallbackAttempts?.length) {
+      setInfo(`O modelo principal falhou e usei ${d.model}. Motivos: ${d.fallbackAttempts.map((a: { model: string; error: string }) => `${a.model} (${a.error.slice(0, 80)})`).join("; ")}`);
+    }
     load();
   };
 
@@ -39,7 +45,9 @@ export default function SugestoesPage() {
       <p className="text-xs text-yellow-400/90 border border-yellow-500/30 bg-yellow-500/5 rounded-lg px-3 py-2">
         Conteúdo gerado por IA com dados possivelmente atrasados ou incompletos. Não é recomendação de investimento; decida com seu próprio julgamento ou com um profissional certificado.
       </p>
+      <ProfileCard />
       {err && <p className="text-down text-sm">{err}</p>}
+      {info && <p className="text-xs text-yellow-400/90">{info}</p>}
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
         {[...latest.values()].map((s) => <SuggestionCard key={s.id} s={s} />)}
       </div>

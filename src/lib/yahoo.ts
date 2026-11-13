@@ -144,3 +144,9 @@ export async function yahooDividends(symbol: string, fromDate: Date): Promise<{ 
     .filter((d) => typeof d.amount === "number" && d.amount > 0)
     .map((d) => ({ date: new Date(d.date).toISOString().slice(0, 10), amount: d.amount }));
 }
+
+/** Symbols Yahoo considers similar to this one (not strictly the same sector). */
+export async function yahooSimilar(symbol: string): Promise<string[]> {
+  const r = (await timeout(yf.recommendationsBySymbol(symbol, {}, { validateResult: false }))) as { recommendedSymbols?: { symbol?: string }[] };
+  return (r.recommendedSymbols ?? []).map((x) => String(x.symbol ?? "")).filter(Boolean);
+}

@@ -44,10 +44,18 @@ describe("ações (B3)", () => {
 
 describe("FII/ETF and cripto", () => {
   it("FII: 20% and no exemption", () => {
-    const r = computeTax([stock("HGLG11", [buy("2026-01-02", 100, 100), sell("2026-02-02", 100, 110)])], []);
+    const r = computeTax([stock("HGLG11", [buy("2026-01-02", 100, 100), sell("2026-02-02", 100, 110)], "FII")], []);
     expect(r.months[0]).toMatchObject({ category: "FII", exempt: false, gain: 1000 });
     expect(r.months[0].tax).toBeCloseTo(200, 6);
-    expect(r.warnings.join()).toContain("HGLG11");
+    expect(r.warnings).toEqual([]);
+  });
+
+  it("ETF: 15% and no exemption; ticker ending in 11 as a stock only gets a hint", () => {
+    const etf = computeTax([stock("BOVA11", [buy("2026-01-02", 100, 100), sell("2026-02-02", 100, 110)], "ETF")], []);
+    expect(etf.months[0]).toMatchObject({ category: "ETF", exempt: false });
+    expect(etf.months[0].tax).toBeCloseTo(150, 6);
+    const hint = computeTax([stock("TAEE11", [buy("2026-01-02", 10, 10)])], []);
+    expect(hint.warnings.join()).toContain("TAEE11");
   });
 
   it("cripto: exempt up to R$ 35 mil in sales, 15% above", () => {

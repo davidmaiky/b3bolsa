@@ -14,6 +14,7 @@ pela [London Strategic Edge](https://londonstrategicedge.com/data/#api) e sugest
 | Cripto (`BTC`) | LSE WebSocket (`BTC/USD`), tempo real | — (momento e volatilidade) |
 | Moedas (`USD`, `EUR`) | LSE WebSocket (`USD/BRL`), com Yahoo como reserva | — |
 | Ações B3 (`PETR4`) | Yahoo Finance, atraso de ~15 min | Yahoo Finance |
+| FIIs e ETFs da B3 (`HGLG11`, `BOVA11`) | Yahoo Finance, atraso de ~15 min | P/VP e VPA do Yahoo; rendimentos pelo histórico de dividendos; vacância informada por você |
 
 A LSE não cobre a B3 nem fundamentos (P/L, LPA, VPA, ROE). Por isso o Yahoo Finance (`yahoo-finance2`, API não oficial)
 entra para B3, fundamentos e como reserva quando a LSE não responde um símbolo.
@@ -40,6 +41,7 @@ Preencha o `.env`:
 - `GEMINI_API_KEY`: https://aistudio.google.com/apikey
 - `APP_PASSWORD` e `AUTH_SECRET` (opcionais): com `APP_PASSWORD` preenchida, o site exige login (cookie de sessão de 30 dias, 5 tentativas erradas bloqueiam por 5 minutos). `AUTH_SECRET`: `openssl rand -hex 32`. Deixe vazias para desativar. Em HTTP puro a senha trafega sem criptografia na rede local; para acesso pela internet use HTTPS
 - `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID` (opcionais): para receber os alertas de preço também no Telegram. Crie o bot com o @BotFather, mande uma mensagem para ele e pegue seu chat id com o @userinfobot
+- `GEMINI_FALLBACK_MODELS` (opcional): modelos reserva separados por vírgula, na ordem de tentativa
 - `GEMINI_MODEL` (opcional): padrão `gemini-2.5-flash`, que funciona no plano gratuito. Modelos Pro (ex.: `gemini-3.1-pro-preview`) exigem faturamento ativo na conta do Google AI Studio
 
 ```bash
@@ -72,11 +74,22 @@ O projeto vem com `Dockerfile` e um guia passo a passo para o **Easypanel**: vej
    critérios de Graham e momento.
 4. **Proventos**: lance dividendos, JCP e rendimentos (JCP sugere 15% de IR), ou use "Importar do Yahoo", que traz o histórico por data ex com a quantidade que você tinha na data (valor bruto, sem imposto). Mostra total recebido, últimos 12 meses, média mensal, yield on cost e gráfico por mês.
 5. **Evolução**: reconstrói a carteira dia a dia com preços históricos do Yahoo e mostra patrimônio × aportado e a rentabilidade ponderada pelo tempo (aportes não contam como ganho) contra CDI (Banco Central), Ibovespa e S&P 500 em R$, com ou sem proventos. Períodos de 1M a Tudo.
-6. **IR**: estima o imposto sobre ganho de capital a partir das suas vendas. Ações da B3: 15% ao mês com isenção até R$ 20 mil em vendas; FII/ETF (tickers terminados em 11): 20%; cripto: isenção até R$ 35 mil e 15% acima; exterior: 15% ao ano em reais. Compensa prejuízos de ações e FII, mostra valor e vencimento da DARF (6015), vendas do ano e a posição a custo em 31/12 para Bens e Direitos. É estimativa: não trata day trade, IRRF, dividendos/JCP nem eventos corporativos.
+6. **IR**: estima o imposto sobre ganho de capital a partir das suas vendas. Ações da B3: 15% ao mês com isenção até R$ 20 mil em vendas; FIIs: 20%, ETFs: 15%, ambos sem isenção; cripto: isenção até R$ 35 mil e 15% acima; exterior: 15% ao ano em reais. Compensa prejuízos de ações, FIIs e ETFs (cada categoria separada), mostra valor e vencimento da DARF (6015), vendas do ano e a posição a custo em 31/12 para Bens e Direitos. É estimativa: não trata day trade, IRRF, dividendos/JCP nem eventos corporativos.
 7. **Rebalancear**: defina a meta de alocação por classe (B3, EUA, cripto, moedas, somando 100%) e veja o desvio atual e quanto comprar ou vender para chegar nela. Informando um aporte, o app divide o valor só entre as classes abaixo da meta, sem vender nada. As metas também vão para o Gemini, que passa a considerar o desvio nas sugestões.
 8. **Alertas**: avisos de preço de uso único (preço subir ou cair até X, ficar abaixo do teto de Bazin ou do valor de Graham). O servidor monitora as cotações mesmo com o navegador fechado e avisa na tela, pela notificação do navegador e, se configurado, pelo Telegram. Rearme o alerta depois de disparado. O servidor precisa estar ligado.
 9. **Sugestões IA**: o Gemini recebe os indicadores de cada ativo da carteira e da watchlist e devolve
    COMPRAR / MANTER / VENDER, confiança, preço-alvo, justificativa e riscos. O histórico fica salvo.
+   - **Perfil do investidor** (risco, objetivo, horizonte, concentração máxima por ativo e observações): preencha na própria página; o modelo ajusta as recomendações a ele e cita o perfil quando isso muda a conclusão.
+   - **Comparação com pares**: P/L e P/VP do ativo contra a mediana de empresas parecidas (Yahoo). Se não houver pares suficientes do mesmo setor, o app usa os "ativos semelhantes" do Yahoo e avisa que podem ser de outros setores.
+   - **Resiliência**: se o modelo principal falhar (cota esgotada, 429, instabilidade 503, modelo removido), o app tenta de novo e passa para os modelos reserva (`gemini-2.5-flash`, `gemini-flash-latest`, `gemini-2.5-flash-lite`, ou a lista em `GEMINI_FALLBACK_MODELS`). A tela mostra qual modelo respondeu e por que os outros falharam.
+
+## FIIs e ETFs
+
+Há classes próprias: **FIIs** e **ETFs B3** (além de Ações B3). Ao buscar um ativo, o app sugere a classe pelo nome; você pode trocar na página do ativo (só entre as três classes da B3). Tickers terminados em 11 também são usados por units de empresas, por isso o app não adivinha só pelo número.
+
+Para FIIs, Graham, Bazin e P/L não se aplicam. A página do ativo mostra **P/VP e desconto/ágio ao VPA, dividend yield mensal (último e médio) e de 12 meses, meses com pagamento (x/12), tendência dos rendimentos e um placar por regras**. O Yahoo não traz **vacância** nem segmento: copie do relatório gerencial mensal do fundo para o cartão "Dados do relatório gerencial"; o Gemini e o placar passam a usar esses números. Os rendimentos entram em Proventos (importar do Yahoo) como "Rendimento".
+
+No IR, FII paga 20% sobre o ganho de capital, sem isenção (rendimentos são isentos para pessoa física e não entram no cálculo). ETF de renda variável paga 15% sem isenção de R$ 20 mil. ETFs entram na análise por momento e volatilidade, como cripto.
 
 ## Indicadores
 

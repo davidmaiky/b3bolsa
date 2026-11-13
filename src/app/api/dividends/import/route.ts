@@ -17,7 +17,7 @@ export const maxDuration = 120;
 export async function POST(req: Request) {
   const { assetId } = (await req.json().catch(() => ({}))) as { assetId?: string };
   const assets = await db.asset.findMany({
-    where: { ...(assetId ? { id: assetId } : {}), assetClass: { in: ["B3", "US"] }, transactions: { some: {} } },
+    where: { ...(assetId ? { id: assetId } : {}), assetClass: { in: ["B3", "FII", "ETF", "US"] }, transactions: { some: {} } },
     include: { transactions: true, dividends: true },
   });
 
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
         const exists = a.dividends.some((x) => x.date.toISOString().slice(0, 10) === d.date && Math.abs(x.perShare - d.amount) < 1e-9);
         if (exists) continue;
         await db.dividend.create({
-          data: { assetId: a.id, type: "DIVIDENDO", date: new Date(d.date), perShare: d.amount, quantity: qty, source: "yahoo", note: "Importado do Yahoo (data ex, valor bruto)" },
+          data: { assetId: a.id, type: a.assetClass === "FII" ? "RENDIMENTO" : "DIVIDENDO", date: new Date(d.date), perShare: d.amount, quantity: qty, source: "yahoo", note: "Importado do Yahoo (data ex, valor bruto)" },
         });
         added++;
       }

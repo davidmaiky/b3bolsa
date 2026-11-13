@@ -163,6 +163,11 @@ async function bcbCdi(start: string, end: string): Promise<Close[]> {
 const g = globalThis as unknown as { __evo?: { key: string; at: number; data: Evolution } };
 const TTL_MS = 5 * 60_000;
 
+/** Editing a transaction does not change the cache key (count / created-at): drop the cache explicitly. */
+export function invalidateEvolution() {
+  g.__evo = undefined;
+}
+
 export async function loadEvolution(force = false): Promise<Evolution> {
   const [txCount, divCount, lastTx, lastDiv] = await Promise.all([
     db.transaction.count(),
