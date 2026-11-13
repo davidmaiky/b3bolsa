@@ -61,14 +61,31 @@ export default function TransacoesPage() {
           <Field label={`Preço (${selected?.currency ?? ""})`}><input className="input w-full" inputMode="decimal" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required /></Field>
           <Field label="Taxas"><input className="input w-full" inputMode="decimal" value={form.fees} onChange={(e) => setForm({ ...form, fees: e.target.value })} /></Field>
           <Field label="Data"><input className="input w-full" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required /></Field>
-          <button className="btn h-[34px]" disabled={!assets.length}>Lançar</button>
+          <button className="btn col-span-2 md:col-span-1 md:h-[34px]" disabled={!assets.length}>Lançar</button>
         </form>
         {err && <p className="text-down text-sm">{err}</p>}
       </section>
 
       <section className="card p-4">
         <h2 className="font-semibold mb-3">Histórico</h2>
-        <table className="w-full text-sm">
+        <ul className="md:hidden divide-y divide-line text-sm">
+          {txs.map((t) => (
+            <li key={t.id} className="py-3 space-y-1">
+              <div className="flex items-center gap-2">
+                <Link className="font-medium hover:underline" href={`/ativos/${t.asset.id}`}>{t.asset.ticker}</Link>
+                <span className={`text-xs ${t.type === "BUY" ? "text-up" : "text-down"}`}>{t.type === "BUY" ? "Compra" : "Venda"}</span>
+                <span className="num text-xs text-muted ml-auto">{new Date(t.date).toLocaleDateString("pt-BR", { timeZone: "UTC" })}</span>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="num text-muted text-xs">{fmtNum(t.quantity, 8)} × {fmtMoney(t.price, t.asset.currency)}{t.fees ? ` + ${fmtMoney(t.fees, t.asset.currency)} taxas` : ""}</span>
+                <span className="num">{fmtMoney(t.quantity * t.price + (t.type === "BUY" ? t.fees : -t.fees), t.asset.currency)}</span>
+              </div>
+              <button className="text-xs text-muted hover:text-down py-1" onClick={() => confirm("Excluir transação?") && fetch(`/api/transactions/${t.id}`, { method: "DELETE" }).then(load)}>excluir</button>
+            </li>
+          ))}
+          {txs.length === 0 && <li className="text-muted py-3">Nenhuma transação.</li>}
+        </ul>
+        <table className="hidden md:table w-full text-sm">
           <thead className="text-muted text-xs"><tr className="text-right"><th className="text-left font-normal py-2">Data</th><th className="text-left font-normal">Ativo</th><th className="text-left font-normal">Tipo</th><th className="font-normal">Qtd</th><th className="font-normal">Preço</th><th className="font-normal">Taxas</th><th className="font-normal">Total</th><th /></tr></thead>
           <tbody>
             {txs.map((t) => (

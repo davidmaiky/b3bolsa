@@ -19,6 +19,7 @@ model Asset {
   transactions Transaction[]
   fundamentals Fundamentals?
   suggestions  Suggestion[]
+  dividends    Dividend[]
 }
 
 model Transaction {
@@ -53,4 +54,21 @@ model Suggestion {
   indicators String // JSON snapshot sent to the LLM
   model      String
   createdAt  DateTime @default(now())
+}
+
+// Proventos recebidos. date = data do evento (ex-data ou pagamento); perShare e tax na moeda do ativo.
+model Dividend {
+  id        String   @id @default(cuid())
+  assetId   String
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  type      String // DIVIDENDO | JCP | RENDIMENTO | OUTRO
+  date      DateTime
+  perShare  Float
+  quantity  Float
+  tax       Float    @default(0) // imposto retido na fonte (total)
+  source    String   @default("manual") // manual | yahoo
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([assetId, date])
 }

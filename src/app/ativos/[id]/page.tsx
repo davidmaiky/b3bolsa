@@ -50,24 +50,24 @@ export default function AtivoPage({ params }: { params: Promise<{ id: string }> 
 
   return (
     <div className="space-y-5">
-      <header className="flex items-end gap-4 flex-wrap">
+      <header className="flex items-end gap-x-4 gap-y-2 flex-wrap">
         <div>
           <p className="text-xs text-muted">{ASSET_CLASS_LABEL[asset.assetClass]}{f?.sector ? ` · ${f.sector}` : ""}</p>
-          <h1 className="text-2xl font-semibold">{asset.ticker} <span className="text-muted text-base font-normal">{f?.name ?? asset.name}</span></h1>
+          <h1 className="text-xl sm:text-2xl font-semibold">{asset.ticker} <span className="text-muted text-base font-normal">{f?.name ?? asset.name}</span></h1>
         </div>
-        <div className="num text-2xl">{fmtMoney(price, cur)}</div>
+        <div className="num text-xl sm:text-2xl">{fmtMoney(price, cur)}</div>
         <div className={`num ${tone(q?.changePct)}`}>{fmtPct(q?.changePct)}</div>
         <span className="text-xs text-muted">{q?.source === "lse-ws" ? "LSE tempo real" : q?.delayed ? "Yahoo · atraso ~15 min" : q?.source ?? ""}</span>
-        <button className="btn ml-auto" onClick={runAi} disabled={busy}>{busy ? "Analisando…" : "Analisar com IA"}</button>
+        <button className="btn sm:ml-auto w-full sm:w-auto" onClick={runAi} disabled={busy}>{busy ? "Analisando…" : "Analisar com IA"}</button>
       </header>
       {err && <p className="text-down text-sm">{err}</p>}
 
-      <section className="card p-4 h-72">
+      <section className="card p-2 sm:p-4 h-64 sm:h-72">
         {history.length ? (
           <ResponsiveContainer>
             <LineChart data={history} margin={{ left: 8, right: 8 }}>
               <XAxis dataKey="date" tick={{ fill: "#8b98a8", fontSize: 11 }} minTickGap={50} />
-              <YAxis domain={["auto", "auto"]} tick={{ fill: "#8b98a8", fontSize: 11 }} width={60} />
+              <YAxis domain={["auto", "auto"]} tick={{ fill: "#8b98a8", fontSize: 11 }} width={52} />
               <Tooltip contentStyle={{ background: "#121821", border: "1px solid #243040" }} formatter={(x) => fmtMoney(Number(x), cur)} />
               <Line type="monotone" dataKey="close" stroke="#3b82f6" dot={false} strokeWidth={1.5} />
               {a.position && <ReferenceLine ifOverflow="extendDomain" y={a.position.avgPrice} stroke="#a855f7" strokeDasharray="4 4" label={{ value: "Preço médio", fill: "#a855f7", fontSize: 11 }} />}
@@ -158,7 +158,7 @@ function Rows({ rows }: { rows: [string, string][] }) {
   return (
     <dl className="text-sm divide-y divide-line">
       {rows.map(([k, val]) => (
-        <div key={k} className="flex justify-between py-1.5"><dt className="text-muted">{k}</dt><dd className="num">{val}</dd></div>
+        <div key={k} className="flex justify-between gap-3 py-1.5"><dt className="text-muted">{k}</dt><dd className="num">{val}</dd></div>
       ))}
     </dl>
   );

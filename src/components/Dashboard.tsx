@@ -37,6 +37,7 @@ export function Dashboard() {
   const total = held.reduce((s, r) => s + fin(r.v.marketValueBrl ?? r.v.costBrl), 0);
   const cost = held.reduce((s, r) => s + fin(r.v.costBrl), 0);
   const realized = rows.reduce((s, r) => s + fin(r.p.realizedPnl * r.v.fxToBrl), 0);
+  const divs12 = held.reduce((s, r) => s + fin(r.p.dividendsNet12m * r.v.fxToBrl), 0);
   const missingFx = !fx && held.some((r) => r.p.currency === "USD");
   const dayPnl = held.reduce((s, r) => {
     const pc = r.q?.previousClose;
@@ -54,16 +55,17 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <Kpi label="Patrimônio" value={fmtMoney(total)} />
+      <section className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+        <Kpi label="Patrimônio" value={fmtMoney(total)} wide />
         <Kpi label="Custo" value={fmtMoney(cost)} />
         <Kpi label="Resultado não realizado" value={fmtMoney(total - cost)} sub={fmtPct(cost ? ((total - cost) / cost) * 100 : undefined)} t={total - cost} />
         <Kpi label="Resultado do dia" value={fmtMoney(dayPnl)} sub={fmtPct(total - dayPnl ? (dayPnl / (total - dayPnl)) * 100 : undefined)} t={dayPnl} />
         <Kpi label="Realizado" value={fmtMoney(realized)} t={realized} sub={`USD/BRL ${fmtNum(fx, 4)}`} />
+        <Kpi label="Proventos (12m)" value={fmtMoney(divs12)} sub={`YoC ${fmtPct(cost ? (divs12 / cost) * 100 : undefined, 2, false)}`} t={divs12} wide />
       </section>
       {missingFx && <p className="text-xs text-yellow-400">Aguardando a cotação USD/BRL: posições em dólar ainda não entram no total.</p>}
 
-      <section className="grid lg:grid-cols-[1fr_280px] gap-4">
+      <section className="grid lg:grid-cols-[minmax(0,1fr)_280px] gap-4">
         <div className="card p-4">
           <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
             <h2 className="font-semibold">Posições</h2>
@@ -126,9 +128,9 @@ export function Dashboard() {
 
 const flash = (d?: { d: "up" | "down" }) => (d ? (d.d === "up" ? "flash-up" : "flash-down") : "");
 
-function Kpi({ label, value, sub, t }: { label: string; value: string; sub?: string; t?: number }) {
+function Kpi({ label, value, sub, t, wide }: { label: string; value: string; sub?: string; t?: number; wide?: boolean }) {
   return (
-    <div className="card p-4">
+    <div className={`card p-3 sm:p-4 ${wide ? "col-span-2 lg:col-span-1" : ""}`}>
       <p className="text-xs text-muted">{label}</p>
       <p className={`num text-lg font-semibold mt-1 ${t === undefined ? "" : tone(t)}`}>{value}</p>
       {sub && <p className={`num text-xs mt-0.5 ${t === undefined ? "text-muted" : tone(t)}`}>{sub}</p>}
@@ -138,7 +140,25 @@ function Kpi({ label, value, sub, t }: { label: string; value: string; sub?: str
 
 function PositionsTable({ rows, dir, total }: { rows: { p: PositionRow; q?: Quote; v: ReturnType<typeof valuePosition> }[]; dir: Record<string, { d: "up" | "down"; n: number }>; total: number }) {
   return (
-    <div className="overflow-x-auto">
+    <>
+    <ul className="md:hidden divide-y divide-line">
+      {rows.map(({ p, q, v }) => (
+        <li key={p.assetId} className="py-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 text-sm">
+          <div>
+            <Link href={`/ativos/${p.assetId}`} className="font-medium hover:underline">{p.ticker}</Link>
+            <span className="text-xs text-muted"> · {ASSET_CLASS_LABEL[p.assetClass]} · {fmtPct(total ? ((v.marketValueBrl ?? v.costBrl) / total) * 100 : undefined, 1, false)}</span>
+          </div>
+          <div className="num text-right">{fmtMoney(v.marketValueBrl)}</div>
+          <div className="num text-xs text-muted">
+            <span className={flash(dir[p.quoteKey])} key={dir[p.quoteKey]?.n}>{fmtMoney(q?.price, p.currency)}</span>
+            {" "}<span className={tone(q?.changePct)}>{fmtPct(q?.changePct)}</span>
+          </div>
+          <div className={`num text-xs text-right ${tone(v.unrealizedPnl)}`}>{fmtMoney(v.unrealizedPnl, p.currency)} · {fmtPct(v.unrealizedPct)}</div>
+          <div className="num text-[11px] text-muted col-span-2">{fmtNum(p.quantity, 8)} a {fmtMoney(p.avgPrice, p.currency)}</div>
+        </li>
+      ))}
+    </ul>
+    <div className="hidden md:block overflow-x-auto">
       <table className="w-full text-sm whitespace-nowrap [&_td]:px-2 [&_th]:px-2 [&_td:first-child]:pl-0 [&_th:first-child]:pl-0">
         <thead className="text-muted text-xs">
           <tr className="text-right">
@@ -177,5 +197,6 @@ function PositionsTable({ rows, dir, total }: { rows: { p: PositionRow; q?: Quot
         </tbody>
       </table>
     </div>
+    </>
   );
 }

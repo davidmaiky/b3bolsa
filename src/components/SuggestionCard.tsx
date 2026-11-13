@@ -22,12 +22,12 @@ export function SuggestionCard({ s }: { s: SuggestionRow }) {
   const upside = s.targetPrice && price ? (s.targetPrice / price - 1) * 100 : undefined;
   return (
     <article className="card p-4 space-y-3">
-      <header className="flex items-center gap-3">
+      <header className="flex items-center gap-x-3 gap-y-1 flex-wrap">
         <a href={`/ativos/${s.asset.id}`} className="font-semibold text-lg hover:underline">{s.asset.ticker}</a>
         <span className={`text-xs font-semibold px-2 py-0.5 rounded ${COLORS[s.action] ?? ""}`}>{s.action}</span>
         <span className="text-xs text-muted ml-auto">confiança {Math.round(s.confidence * 100)}%</span>
       </header>
-      <dl className="grid grid-cols-3 gap-2 text-xs">
+      <dl className="grid grid-cols-2 min-[420px]:grid-cols-3 gap-2 text-xs">
         <Stat label="Preço" value={fmtMoney(price, s.asset.currency)} />
         <Stat label="Alvo IA" value={fmtMoney(s.targetPrice, s.asset.currency)} sub={fmtPct(upside, 1)} />
         <Stat label="Graham" value={fmtMoney(ind.valuation?.grahamValue, s.asset.currency)} sub={ind.valuation?.grahamMargin !== undefined ? `margem ${fmtPct(ind.valuation.grahamMargin * 100, 0)}` : undefined} />

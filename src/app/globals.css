@@ -26,7 +26,9 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+html { -webkit-text-size-adjust: 100%; }
 body {
+  overflow-x: hidden;
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-sans);
@@ -45,3 +47,9 @@ body {
 @keyframes flash-down { from { background: rgba(239,68,68,.35); } to { background: transparent; } }
 .flash-up { animation: flash-up 1s ease-out; }
 .flash-down { animation: flash-down 1s ease-out; }
+
+/* phones: 16px fields avoid iOS auto-zoom; taller touch targets */
+@media (max-width: 639px) {
+  .input, .btn, .btn-ghost { min-height: 40px; font-size: 16px; }
+  .btn, .btn-ghost { padding-left: 16px; padding-right: 16px; }
+}

@@ -134,3 +134,13 @@ export async function yahooSearch(q: string) {
       exchange: String(x.exchange ?? ""),
     }));
 }
+
+/** Dividend history (per share, gross, by ex-date). Covers B3 and US stocks. */
+export async function yahooDividends(symbol: string, fromDate: Date): Promise<{ date: string; amount: number }[]> {
+  const r = (await timeout(yf.chart(symbol, { period1: fromDate, interval: "1mo", events: "div" }, { validateResult: false }), 15000)) as {
+    events?: { dividends?: { amount: number; date: Date | number }[] };
+  };
+  return (r.events?.dividends ?? [])
+    .filter((d) => typeof d.amount === "number" && d.amount > 0)
+    .map((d) => ({ date: new Date(d.date).toISOString().slice(0, 10), amount: d.amount }));
+}

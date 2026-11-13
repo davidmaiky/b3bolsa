@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { computePosition, type Position } from "./portfolio";
 import { priceService } from "./prices";
+import { netOf, netSince } from "./dividends";
 import type { AssetClass, AssetRef } from "./types";
 
 export interface PositionRow extends Position {
@@ -11,10 +12,12 @@ export interface PositionRow extends Position {
   currency: string;
   watchlist: boolean;
   quoteKey: string;
+  dividendsNet12m: number; // proventos líquidos nos últimos 12 meses (moeda do ativo)
+  dividendsNetTotal: number;
 }
 
 export async function loadPositions(): Promise<PositionRow[]> {
-  const assets = await db.asset.findMany({ include: { transactions: true }, orderBy: { ticker: "asc" } });
+  const assets = await db.asset.findMany({ include: { transactions: true, dividends: true }, orderBy: { ticker: "asc" } });
   const refs: AssetRef[] = assets.map((a) => ({ ticker: a.ticker, assetClass: a.assetClass as AssetClass, currency: a.currency }));
   priceService.track(refs);
   return assets.map((a) => ({
@@ -25,6 +28,8 @@ export async function loadPositions(): Promise<PositionRow[]> {
     currency: a.currency,
     watchlist: a.watchlist,
     quoteKey: `${a.ticker.toUpperCase()}:${a.assetClass}`,
+    dividendsNet12m: netSince(a.dividends),
+    dividendsNetTotal: a.dividends.reduce((t, d) => t + netOf(d), 0),
     ...computePosition(a.transactions),
   }));
 }

@@ -38,7 +38,8 @@ cp .env.example .env
 Preencha o `.env`:
 - `LSE_API_KEY`: crie a chave no Databank em https://londonstrategicedge.com/data
 - `GEMINI_API_KEY`: https://aistudio.google.com/apikey
-- `GEMINI_MODEL` (opcional): padrão `gemini-2.5-pro`
+- `APP_PASSWORD` e `AUTH_SECRET` (opcionais): com `APP_PASSWORD` preenchida, o site exige login (cookie de sessão de 30 dias, 5 tentativas erradas bloqueiam por 5 minutos). `AUTH_SECRET`: `openssl rand -hex 32`. Deixe vazias para desativar. Em HTTP puro a senha trafega sem criptografia na rede local; para acesso pela internet use HTTPS
+- `GEMINI_MODEL` (opcional): padrão `gemini-2.5-flash`, que funciona no plano gratuito. Modelos Pro (ex.: `gemini-3.1-pro-preview`) exigem faturamento ativo na conta do Google AI Studio
 
 ```bash
 npm run db:push
@@ -64,7 +65,8 @@ LSE_API_KEY=sua_chave npm run lse:smoke
    posição são recusadas.
 3. **Ativo**: gráfico de 12 meses com linhas de preço médio, valor de Graham e preço teto de Bazin; fundamentos,
    critérios de Graham e momento.
-4. **Sugestões IA**: o Gemini recebe os indicadores de cada ativo da carteira e da watchlist e devolve
+4. **Proventos**: lance dividendos, JCP e rendimentos (JCP sugere 15% de IR), ou use "Importar do Yahoo", que traz o histórico por data ex com a quantidade que você tinha na data (valor bruto, sem imposto). Mostra total recebido, últimos 12 meses, média mensal, yield on cost e gráfico por mês.
+5. **Sugestões IA**: o Gemini recebe os indicadores de cada ativo da carteira e da watchlist e devolve
    COMPRAR / MANTER / VENDER, confiança, preço-alvo, justificativa e riscos. O histórico fica salvo.
 
 ## Indicadores

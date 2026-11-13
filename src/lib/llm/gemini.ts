@@ -55,7 +55,7 @@ export function geminiConfigured() {
 }
 
 export function geminiModel() {
-  return process.env.GEMINI_MODEL?.trim() || "gemini-2.5-pro";
+  return process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
 }
 
 const round = (_k: string, v: unknown) => (typeof v === "number" ? Number(v.toPrecision(5)) : v);
@@ -65,7 +65,8 @@ export async function suggest(
   portfolioContext: { totalBrl: number; weights: Record<string, number> },
 ): Promise<LlmSuggestion[]> {
   if (!geminiConfigured()) throw new Error("Configure GEMINI_API_KEY no arquivo .env");
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+  // preview models are only served on v1beta
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY!, httpOptions: { apiVersion: "v1beta" } });
   const payload = analyses.map((a) => ({
     ...a,
     peso_na_carteira_pct: portfolioContext.weights[a.ticker] ?? 0,

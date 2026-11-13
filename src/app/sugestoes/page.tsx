@@ -27,14 +27,14 @@ export default function SugestoesPage() {
   return (
     <div className="space-y-5">
       <div className="flex items-start gap-4 flex-wrap">
-        <div className="flex-1 min-w-[280px]">
+        <div className="flex-1 min-w-0 sm:min-w-[280px]">
           <h1 className="text-xl font-semibold">Sugestões de compra e venda</h1>
           <p className="text-sm text-muted mt-1 max-w-3xl">
             O Gemini analisa cada ativo da carteira e da watchlist com P/L, P/VP, valor de Graham, critérios defensivos de Graham,
             preço teto de Bazin, ROE, endividamento, crescimento e momento técnico (cripto e moedas: momento e volatilidade).
           </p>
         </div>
-        <button className="btn" onClick={run} disabled={busy}>{busy ? "Analisando…" : "Analisar carteira"}</button>
+        <button className="btn w-full sm:w-auto" onClick={run} disabled={busy}>{busy ? "Analisando…" : "Analisar carteira"}</button>
       </div>
       <p className="text-xs text-yellow-400/90 border border-yellow-500/30 bg-yellow-500/5 rounded-lg px-3 py-2">
         Conteúdo gerado por IA com dados possivelmente atrasados ou incompletos. Não é recomendação de investimento; decida com seu próprio julgamento ou com um profissional certificado.
