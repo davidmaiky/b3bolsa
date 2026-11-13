@@ -6,7 +6,9 @@ import { StatusBadge } from "./StatusBadge";
 const NAV = [
   { href: "/", label: "Carteira" },
   { href: "/transacoes", label: "Transações" },
+  { href: "/evolucao", label: "Evolução" },
   { href: "/proventos", label: "Proventos" },
+  { href: "/imposto", label: "IR" },
   { href: "/sugestoes", label: "Sugestões IA" },
 ];
 

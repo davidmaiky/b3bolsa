@@ -66,7 +66,9 @@ LSE_API_KEY=sua_chave npm run lse:smoke
 3. **Ativo**: gráfico de 12 meses com linhas de preço médio, valor de Graham e preço teto de Bazin; fundamentos,
    critérios de Graham e momento.
 4. **Proventos**: lance dividendos, JCP e rendimentos (JCP sugere 15% de IR), ou use "Importar do Yahoo", que traz o histórico por data ex com a quantidade que você tinha na data (valor bruto, sem imposto). Mostra total recebido, últimos 12 meses, média mensal, yield on cost e gráfico por mês.
-5. **Sugestões IA**: o Gemini recebe os indicadores de cada ativo da carteira e da watchlist e devolve
+5. **Evolução**: reconstrói a carteira dia a dia com preços históricos do Yahoo e mostra patrimônio × aportado e a rentabilidade ponderada pelo tempo (aportes não contam como ganho) contra CDI (Banco Central), Ibovespa e S&P 500 em R$, com ou sem proventos. Períodos de 1M a Tudo.
+6. **IR**: estima o imposto sobre ganho de capital a partir das suas vendas. Ações da B3: 15% ao mês com isenção até R$ 20 mil em vendas; FII/ETF (tickers terminados em 11): 20%; cripto: isenção até R$ 35 mil e 15% acima; exterior: 15% ao ano em reais. Compensa prejuízos de ações e FII, mostra valor e vencimento da DARF (6015), vendas do ano e a posição a custo em 31/12 para Bens e Direitos. É estimativa: não trata day trade, IRRF, dividendos/JCP nem eventos corporativos.
+7. **Sugestões IA**: o Gemini recebe os indicadores de cada ativo da carteira e da watchlist e devolve
    COMPRAR / MANTER / VENDER, confiança, preço-alvo, justificativa e riscos. O histórico fica salvo.
 
 ## Indicadores
