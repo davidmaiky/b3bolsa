@@ -6,9 +6,12 @@ import { fmtMoney } from "@/lib/format";
 
 interface Row { id: string; type: string; target: number | null; threshold: number | null; triggeredAt: string | null; triggerPrice: number | null; seenAt: string | null; asset: { ticker: string; currency: string } }
 
+interface Due { id: string; label: string; issuer: string; maturityDate: string; daysLeft: number }
+
 /** Polls the alerts and shows fired ones until dismissed; also uses the browser notification when allowed. */
 export function AlertToaster() {
   const [fired, setFired] = useState<Row[]>([]);
+  const [due, setDue] = useState<Due[]>([]);
   const notified = useRef(new Set<string>());
 
   useEffect(() => {
@@ -33,8 +36,26 @@ export function AlertToaster() {
           }
         })
         .catch(() => {});
+    const tickDue = () =>
+      fetch("/api/fixed-income/due")
+        .then((r) => (r.ok ? r.json() : []))
+        .then((rows: Due[]) => {
+          if (stop) return;
+          setDue(rows);
+          for (const d of rows) {
+            if (notified.current.has("due:" + d.id)) continue;
+            notified.current.add("due:" + d.id);
+            try {
+              if ("Notification" in window && Notification.permission === "granted") new Notification(`Vencimento: ${d.label}`, { body: dueText(d) });
+            } catch {
+              /* notifications are optional */
+            }
+          }
+        })
+        .catch(() => {});
     tick();
-    const t = setInterval(tick, 10_000);
+    tickDue();
+    const t = setInterval(() => { tick(); tickDue(); }, 10_000);
     return () => { stop = true; clearInterval(t); };
   }, []);
 
@@ -43,9 +64,24 @@ export function AlertToaster() {
     fetch(`/api/alerts/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ seen: true }) });
   };
 
-  if (!fired.length) return null;
+  const dismissDue = (id: string) => {
+    setDue((d) => d.filter((x) => x.id !== id));
+    fetch(`/api/fixed-income/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ seenDue: true }) });
+  };
+
+  if (!fired.length && !due.length) return null;
   return (
     <div className="fixed z-50 bottom-4 left-4 right-4 sm:left-auto sm:w-96 space-y-2" role="status" aria-live="polite">
+      {due.map((d) => (
+        <div key={d.id} className="card p-3 border-accent shadow-lg flex items-start gap-3 text-sm">
+          <div className="flex-1">
+            <p className="font-semibold">Vencimento: {d.label}</p>
+            <p className="text-xs text-muted">{dueText(d)}</p>
+          </div>
+          <Link href="/renda-fixa" className="text-xs underline text-muted hover:text-fg">ver</Link>
+          <button className="text-xs text-muted hover:text-fg" onClick={() => dismissDue(d.id)} aria-label="Dispensar">✕</button>
+        </div>
+      ))}
       {fired.map((a) => (
         <div key={a.id} className="card p-3 border-accent shadow-lg flex items-start gap-3 text-sm">
           <div className="flex-1">
@@ -58,4 +94,9 @@ export function AlertToaster() {
       ))}
     </div>
   );
+}
+
+function dueText(d: Due) {
+  const dt = `${d.maturityDate.slice(8, 10)}/${d.maturityDate.slice(5, 7)}/${d.maturityDate.slice(0, 4)}`;
+  return d.daysLeft < 0 ? `${d.issuer}: venceu em ${dt}. Marque como resgatada quando receber.` : d.daysLeft === 0 ? `${d.issuer}: vence hoje (${dt}).` : `${d.issuer}: vence em ${d.daysLeft} dia${d.daysLeft === 1 ? "" : "s"} (${dt}).`;
 }

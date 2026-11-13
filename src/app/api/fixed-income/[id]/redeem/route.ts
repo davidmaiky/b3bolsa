@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { loadFixedIncome } from "@/lib/fixed-income-server";
+import { invalidateEvolution } from "@/lib/evolution";
 
 export const runtime = "nodejs";
 
@@ -26,5 +27,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     net = est.net;
   }
   await db.fixedIncome.update({ where: { id }, data: { redeemedAt: date, redeemedNet: net } });
+  invalidateEvolution();
   return NextResponse.json({ ok: true, net });
 }

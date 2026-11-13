@@ -8,6 +8,7 @@ import { loadPositions, weightsBrl } from "@/lib/server-portfolio";
 import { priceService } from "@/lib/prices";
 import { yahooQuotes } from "@/lib/yahoo";
 import { loadFixedIncome } from "@/lib/fixed-income-server";
+import { fixedIncomeForPrompt } from "@/lib/fi-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,7 +33,8 @@ export async function POST(req: Request) {
   const ids = body.assetIds?.length
     ? body.assetIds
     : positions.filter((p) => p.quantity > 0 || p.watchlist).map((p) => p.assetId);
-  if (!ids.length) return NextResponse.json({ error: "Nenhum ativo na carteira ou watchlist" }, { status: 400 });
+  const fixedIncome = await fixedIncomeForPrompt().catch((e) => { console.warn("[suggestions] renda fixa", (e as Error).message); return null; });
+  if (!ids.length && !fixedIncome) return NextResponse.json({ error: "Nenhum ativo na carteira ou watchlist e nenhuma aplicação em renda fixa" }, { status: 400 });
 
   const analyses = [];
   for (const id of ids.slice(0, 25)) {
@@ -59,7 +61,8 @@ export async function POST(req: Request) {
       classAllocation = [...new Set([...Object.keys(byClass), ...Object.keys(t)])].map((c) => ({ classe: c, atual_pct: ((byClass[c] ?? 0) / grand) * 100, meta_pct: t[c] ?? 0 }));
     }
     const profile = (await db.investorProfile.findUnique({ where: { id: "me" } })) as Profile | null;
-    const { items: out, model, attempts } = await suggest(analyses, { ...ctx, classAllocation, profile });
+    const { items: out, insight, model, attempts } = await suggest(analyses, { ...ctx, classAllocation, profile, fixedIncome });
+    const savedInsight = insight ? await db.portfolioInsight.create({ data: { text: insight, model } }) : null;
     const byTicker = new Map(analyses.map((a, i) => [a.ticker, ids[i]]));
     const saved = [];
     for (const s of out) {
@@ -82,7 +85,7 @@ export async function POST(req: Request) {
         }),
       );
     }
-    return NextResponse.json({ suggestions: saved, analyses, model, fallbackAttempts: attempts });
+    return NextResponse.json({ suggestions: saved, analyses, insight: savedInsight, model, fallbackAttempts: attempts });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message, attempts: e instanceof AllModelsFailed ? e.attempts : undefined }, { status: 502 });
   }

@@ -14,6 +14,7 @@ const RANGES = [
 
 const SERIES = [
   { key: "carteira", label: "Carteira", color: "#3b82f6" },
+  { key: "rf", label: "Renda fixa (líq.)", color: "#94a3b8" },
   { key: "cdi", label: "CDI", color: "#f59e0b" },
   { key: "ibov", label: "Ibovespa", color: "#22c55e" },
   { key: "sp500", label: "S&P 500 (R$)", color: "#a855f7" },
@@ -42,6 +43,8 @@ export default function EvolucaoPage() {
   };
   useEffect(() => load(), []);
 
+  const hasRf = !!ev?.points.some((p) => p.rf > 0);
+
   const view = useMemo(() => {
     if (!ev?.points.length) return null;
     const days = RANGES.find((r) => r.id === range)!.days;
@@ -57,6 +60,8 @@ export default function EvolucaoPage() {
       holdings: p.holdings,
       invested: p.invested,
       carteira: rb(own(p), own(first)),
+      rf: rb(p.rfTwr, first.rfTwr),
+      rfValue: p.rf,
       cdi: rb(p.cdi, first.cdi),
       ibov: rb(p.ibov, first.ibov),
       sp500: rb(p.sp500, first.sp500),
@@ -88,13 +93,13 @@ export default function EvolucaoPage() {
 
       {ev && view && (
         <>
-          <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <section className={`grid grid-cols-2 gap-3 ${hasRf ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}>
             <div className="card p-3 sm:p-4 col-span-2 lg:col-span-1">
               <p className="text-xs text-muted">Resultado no período</p>
               <p className={`num text-lg font-semibold mt-1 ${tone(view.gain)}`}>{fmtMoney(view.gain)}</p>
               <p className="text-[11px] text-muted mt-0.5">{fmtDate(view.from)} a {fmtDate(view.to)}</p>
             </div>
-            {SERIES.map((s) => {
+            {SERIES.filter((s) => s.key !== "rf" || hasRf).map((s) => {
               const v = view.end[s.key];
               return (
                 <div key={s.key} className="card p-3 sm:p-4">
@@ -115,6 +120,7 @@ export default function EvolucaoPage() {
                 <Tooltip contentStyle={tip} labelFormatter={(l) => fmtDate(String(l))} formatter={(v) => fmtMoney(Number(v))} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Line name="Patrimônio" type="monotone" dataKey="holdings" stroke="#3b82f6" dot={false} strokeWidth={1.8} />
+                {hasRf && <Line name="Renda fixa" type="monotone" dataKey="rfValue" stroke="#94a3b8" dot={false} strokeWidth={1.4} />}
                 <Line name="Aportado (líquido)" type="stepAfter" dataKey="invested" stroke="#8b98a8" dot={false} strokeWidth={1.4} strokeDasharray="4 4" />
               </LineChart>
             </ResponsiveContainer>
@@ -129,7 +135,7 @@ export default function EvolucaoPage() {
                 <YAxis tick={tick} width={48} tickFormatter={(v: number) => `${Math.round(v)}%`} domain={["auto", "auto"]} />
                 <Tooltip contentStyle={tip} labelFormatter={(l) => fmtDate(String(l))} formatter={(v) => fmtPct(Number(v))} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                {SERIES.map((s) => <Line key={s.key} name={s.label} type="monotone" dataKey={s.key} stroke={s.color} dot={false} strokeWidth={s.key === "carteira" ? 2.2 : 1.4} connectNulls />)}
+                {SERIES.filter((s) => s.key !== "rf" || hasRf).map((s) => <Line key={s.key} name={s.label} type="monotone" dataKey={s.key} stroke={s.color} dot={false} strokeWidth={s.key === "carteira" ? 2.2 : 1.4} connectNulls />)}
               </LineChart>
             </ResponsiveContainer>
           </section>

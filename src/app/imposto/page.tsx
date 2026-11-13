@@ -3,8 +3,10 @@ import { useEffect, useMemo, useState } from "react";
 import { fmtMoney, fmtNum } from "@/lib/format";
 import { ASSET_CLASS_LABEL } from "@/lib/types";
 import { CATEGORY_LABEL, type Holding, type MonthRow, type Sale, type YearRow } from "@/lib/tax";
+import type { FiYear } from "@/lib/fixed-income-tax";
+import { KIND_LABEL } from "@/lib/fixed-income";
 
-interface Data { months: MonthRow[]; years: YearRow[]; sales: Sale[]; warnings: string[]; holdings: Record<string, Holding[]>; firstYear: number | null }
+interface Data { months: MonthRow[]; years: YearRow[]; sales: Sale[]; warnings: string[]; holdings: Record<string, Holding[]>; firstYear: number | null; fixedIncome?: FiYear[]; fixedMissing?: string[] }
 
 const MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const monthLabel = (m: string) => `${MONTHS[Number(m.slice(5)) - 1]}/${m.slice(2, 4)}`;
@@ -36,6 +38,7 @@ export default function ImpostoPage() {
   const darfTotal = months.reduce((s, m) => s + m.tax, 0);
   const carry = (cat: string) => [...(d?.months ?? [])].filter((m) => m.category === cat && m.month <= `${year}-12`).at(-1)?.carryOut ?? 0;
   const holdingsBrl = holdings.reduce((s, h) => s + h.costBrl, 0);
+  const fi = d?.fixedIncome?.find((y) => y.year === year);
 
   return (
     <div className="space-y-5">
@@ -120,6 +123,57 @@ export default function ImpostoPage() {
               </table>
             </Scroll>
           </section>
+
+          {fi && (fi.redemptions.length > 0 || fi.holdings.length > 0) && (
+            <section className="card p-4 space-y-4">
+              <div>
+                <h2 className="font-semibold">Renda fixa ({year})</h2>
+                <p className="text-xs text-muted mt-1">Resgates do ano e posição para a declaração. O imposto de CDB, debêntures e Tesouro é retido na fonte pelo banco; LCI, LCA, CRI e CRA são isentos. Confira com o informe de rendimentos do banco, que é o documento oficial, e com a tabela de códigos da Receita do ano.</p>
+              </div>
+              {d.fixedMissing && d.fixedMissing.length > 0 && <p className="text-xs text-yellow-400">Sem {d.fixedMissing.join(", ")} no momento: alguns valores estimados aparecem como &ldquo;—&rdquo;.</p>}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Kpi label="Rendimento líquido tributado na fonte" value={fmtMoney(fi.taxedYieldNet)} sub="CDB, debêntures, Tesouro" />
+                <Kpi label="IR retido (estimado)" value={fmtMoney(fi.irWithheld)} />
+                <Kpi label="Rendimento isento" value={fmtMoney(fi.exemptYield)} sub="LCI, LCA, CRI, CRA" />
+              </div>
+              <Scroll>
+                <table className="w-full text-sm whitespace-nowrap [&_td]:px-2 [&_th]:px-2 [&_td:first-child]:pl-0 [&_th:first-child]:pl-0">
+                  <caption className="text-left text-xs text-muted pb-2">Resgatadas em {year}</caption>
+                  <thead className="text-muted text-xs"><tr className="text-right"><th className="text-left font-normal py-2">Aplicação</th><th className="text-left font-normal">Resgate</th><th className="font-normal">Aplicado</th><th className="font-normal">Recebido (líq.)</th><th className="font-normal">Rendimento (líq.)</th><th className="font-normal">IR retido</th></tr></thead>
+                  <tbody>
+                    {fi.redemptions.map((r) => (
+                      <tr key={r.id} className="border-t border-line text-right">
+                        <td className="text-left py-2">{r.label}<span className="block text-xs text-muted">{r.issuer} · {KIND_LABEL[r.kind]}{r.exempt ? " · isento" : ""}</span></td>
+                        <td className="text-left num">{dateBr(r.redeemedAt)}</td>
+                        <td className="num">{fmtMoney(r.principal)}</td>
+                        <td className="num">{fmtMoney(r.received)}</td>
+                        <td className={`num ${r.yieldNet >= 0 ? "text-up" : "text-down"}`}>{fmtMoney(r.yieldNet)}</td>
+                        <td className="num">{r.irWithheld === null ? "—" : fmtMoney(r.irWithheld)}</td>
+                      </tr>
+                    ))}
+                    {fi.redemptions.length === 0 && <tr><td className="text-muted py-3" colSpan={6}>Nenhum resgate em {year}.</td></tr>}
+                  </tbody>
+                </table>
+              </Scroll>
+              <Scroll>
+                <table className="w-full text-sm whitespace-nowrap [&_td]:px-2 [&_th]:px-2 [&_td:first-child]:pl-0 [&_th:first-child]:pl-0">
+                  <caption className="text-left text-xs text-muted pb-2">Posição em {dateBr(fi.holdingsDate)} (Bens e Direitos)</caption>
+                  <thead className="text-muted text-xs"><tr className="text-right"><th className="text-left font-normal py-2">Aplicação</th><th className="font-normal">Aplicado</th><th className="font-normal">Saldo bruto</th><th className="font-normal">Saldo líquido</th></tr></thead>
+                  <tbody>
+                    {fi.holdings.map((h) => (
+                      <tr key={h.id} className="border-t border-line text-right">
+                        <td className="text-left py-2">{h.label}<span className="block text-xs text-muted">{h.issuer} · {KIND_LABEL[h.kind]}</span></td>
+                        <td className="num">{fmtMoney(h.principal)}</td>
+                        <td className="num">{h.gross === null ? "—" : fmtMoney(h.gross)}</td>
+                        <td className="num">{h.net === null ? "—" : fmtMoney(h.net)}</td>
+                      </tr>
+                    ))}
+                    {fi.holdings.length === 0 && <tr><td className="text-muted py-3" colSpan={4}>Nenhuma aplicação nessa data.</td></tr>}
+                  </tbody>
+                </table>
+              </Scroll>
+            </section>
+          )}
 
           <section className="card p-4">
             <h2 className="font-semibold mb-3">Vendas em {year}</h2>

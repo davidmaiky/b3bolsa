@@ -4,10 +4,15 @@ import { yahooSymbol } from "./lse/symbols";
 import { netOf } from "./dividends";
 import type { AssetClass, AssetRef } from "./types";
 import { forwardFill, type Close } from "./series";
+import { makeAccrual, rowLabel, valueFrom, type Rates, type Terms } from "./fixed-income";
+import { getCdiSeries } from "./rates";
+import { loadRates, termsOf } from "./fixed-income-server";
 
 export { forwardFill, type Close };
 
 interface EvTx { type: string; quantity: number; price: number; fees?: number; date: Date | string }
+/** A fixed income contract on the timeline: money goes in on the start date and out on the redemption date. */
+export interface EvFixed { terms: Terms; label: string; redeemedAt?: string | null; redeemedNet?: number | null }
 export interface EvAsset { ref: AssetRef; txs: EvTx[]; closes: Close[]; divs: { date: Date | string; net: number }[] }
 
 export interface EvPoint {
@@ -20,6 +25,8 @@ export interface EvPoint {
   cdi?: number;
   ibov?: number;
   sp500?: number; // em R$
+  rf: number; // renda fixa (R$, líquido de IR/IOF), já somada em `holdings`
+  rfTwr?: number; // índice base 100 só da renda fixa (aportes e resgates não contam como ganho)
 }
 export interface Evolution { points: EvPoint[]; missing: string[]; warnings: string[]; generatedAt: string }
 
@@ -61,13 +68,17 @@ export function computeEvolution(opts: {
   cdiRates?: Close[];
   ibov?: Close[];
   sp500Usd?: Close[];
+  fixed?: EvFixed[];
+  rates?: Rates; // dados de mercado para valorar a renda fixa (CDI, IPCA, Tesouro)
 }): Evolution {
   const { assets, fx, end } = opts;
+  const fixed = opts.fixed ?? [];
   const warnings: string[] = [];
   const missing: string[] = [];
   const allTxs = assets.flatMap((a) => a.txs);
-  if (!allTxs.length) return { points: [], missing, warnings: ["Sem transações para reconstruir a evolução."], generatedAt: new Date().toISOString() };
-  const start = dayStr(allTxs.reduce((m, t) => (new Date(t.date) < new Date(m) ? t.date : m), allTxs[0].date));
+  if (!allTxs.length && !fixed.length) return { points: [], missing, warnings: ["Sem transações nem aplicações em renda fixa para reconstruir a evolução."], generatedAt: new Date().toISOString() };
+  const starts = [...allTxs.map((t) => dayStr(t.date)), ...fixed.map((f) => f.terms.startDate)];
+  const start = starts.reduce((m, d) => (d < m ? d : m));
   const dates = dateRange(start, end);
   const fxFill = forwardFill(fx, dates);
   if (assets.some((a) => a.ref.currency === "USD") && fxFill.every((x) => x === null)) {
@@ -108,7 +119,34 @@ export function computeEvolution(opts: {
     }
   }
 
+  // ---- renda fixa: valor líquido por dia; aplicação = entrada de caixa, resgate = saída
+  const rfHold = new Array<number>(n).fill(0);
+  const rfFlow = new Array<number>(n).fill(0);
+  const noData: string[] = [];
+  for (const f of fixed) {
+    const t = f.terms;
+    const accrual = makeAccrual(t, opts.rates ?? {});
+    let lastNet = t.principal;
+    let sawData = false;
+    for (let k = 0; k < n; k++) {
+      const d = dates[k];
+      if (d < t.startDate) continue;
+      if (f.redeemedAt && d >= f.redeemedAt) {
+        if (d === f.redeemedAt) rfFlow[k] -= f.redeemedNet ?? lastNet;
+        break;
+      }
+      const v = valueFrom(t, d, accrual);
+      if (v) sawData = true;
+      lastNet = v?.net ?? t.principal;
+      rfHold[k] += lastNet;
+      if (d === t.startDate) rfFlow[k] += t.principal;
+    }
+    if (!sawData && t.indexer !== "PRE") noData.push(f.label);
+  }
+  for (let k = 0; k < n; k++) { holdings[k] += rfHold[k]; flow[k] += rfFlow[k]; }
+
   let invested = 0;
+  let rfIdx = 100;
   const twr: number[] = [];
   const twrTotal: number[] = [];
   const points: EvPoint[] = [];
@@ -127,6 +165,9 @@ export function computeEvolution(opts: {
     // first deposit (nothing held yet): performance is measured against the money put in that day
     const rp = prevV > 0 ? (v - flow[k]) / prevV - 1 : flow[k] > 0 ? v / flow[k] - 1 : 0;
     const rt = prevVt > 0 ? (vt - flow[k]) / prevVt - 1 : flow[k] > 0 ? vt / flow[k] - 1 : 0;
+    const prevRf = k ? rfHold[k - 1] : 0;
+    const rr = prevRf > 0 ? (rfHold[k] - rfFlow[k]) / prevRf - 1 : rfFlow[k] > 0 ? rfHold[k] / rfFlow[k] - 1 : 0;
+    rfIdx *= 1 + rr;
     twr.push((k ? twr[k - 1] : 100) * (1 + rp));
     twrTotal.push((k ? twrTotal[k - 1] : 100) * (1 + rt));
     points.push({
@@ -139,26 +180,19 @@ export function computeEvolution(opts: {
       cdi: cdi?.[k] ?? undefined,
       ibov: ibov[k] ?? undefined,
       sp500: spBrl?.[k] ?? undefined,
+      rf: rfHold[k],
+      rfTwr: fixed.length ? rfIdx : undefined,
     });
   }
   if (missing.length) warnings.push(`Sem histórico de preços para ${missing.join(", ")}: usei o preço das suas operações.`);
   if (!opts.ibov?.length) warnings.push("Ibovespa indisponível no momento.");
   if (!opts.sp500Usd?.length) warnings.push("S&P 500 indisponível no momento.");
   if (!opts.cdiRates?.length) warnings.push("CDI indisponível no momento.");
+  if (noData.length) warnings.push(`Sem os dados de mercado para ${noData.join(", ")}: a renda fixa ficou pelo valor aplicado.`);
   return { points, missing, warnings, generatedAt: new Date().toISOString() };
 }
 
 // ---------- data loading ----------
-
-/** Daily CDI rate (% a.d.) from the Banco Central SGS series 12 — public, no key. */
-async function bcbCdi(start: string, end: string): Promise<Close[]> {
-  const f = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
-  const url = `https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados?formato=json&dataInicial=${f(start)}&dataFinal=${f(end)}`;
-  const r = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-  if (!r.ok) throw new Error(`BCB ${r.status}`);
-  const rows = (await r.json()) as { data: string; valor: string }[];
-  return rows.map((x) => ({ date: `${x.data.slice(6, 10)}-${x.data.slice(3, 5)}-${x.data.slice(0, 2)}`, close: Number(x.valor) })).filter((x) => Number.isFinite(x.close));
-}
 
 const g = globalThis as unknown as { __evo?: { key: string; at: number; data: Evolution } };
 const TTL_MS = 5 * 60_000;
@@ -169,18 +203,20 @@ export function invalidateEvolution() {
 }
 
 export async function loadEvolution(force = false): Promise<Evolution> {
-  const [txCount, divCount, lastTx, lastDiv] = await Promise.all([
+  const [txCount, divCount, lastTx, lastDiv, fixedCount] = await Promise.all([
     db.transaction.count(),
     db.dividend.count(),
     db.transaction.aggregate({ _max: { createdAt: true } }),
     db.dividend.aggregate({ _max: { createdAt: true } }),
+    db.fixedIncome.count(),
   ]);
-  const key = `${txCount}:${divCount}:${lastTx._max.createdAt?.getTime()}:${lastDiv._max.createdAt?.getTime()}`;
+  const key = `${txCount}:${divCount}:${fixedCount}:${lastTx._max.createdAt?.getTime()}:${lastDiv._max.createdAt?.getTime()}`;
   if (!force && g.__evo && g.__evo.key === key && Date.now() - g.__evo.at < TTL_MS) return g.__evo.data;
 
   const rows = await db.asset.findMany({ where: { transactions: { some: {} } }, include: { transactions: true, dividends: true } });
   const today = new Date().toISOString().slice(0, 10);
-  const first = rows.flatMap((a) => a.transactions).reduce((m, t) => (t.date < m ? t.date : m), new Date());
+  const fixedRows = await db.fixedIncome.findMany();
+  const first = [...rows.flatMap((a) => a.transactions).map((t) => t.date), ...fixedRows.map((r) => r.startDate)].reduce((m, d) => (d < m ? d : m), new Date());
   const days = Math.ceil((Date.now() - +first) / 86_400_000) + 10;
 
   const hist = async (symbol: string) => {
@@ -192,8 +228,11 @@ export async function loadEvolution(force = false): Promise<Evolution> {
     hist("BRL=X"),
     hist("^BVSP"),
     hist("^GSPC"),
-    bcbCdi(startStr, today).catch((e) => { console.warn("[evolution] cdi", (e as Error).message); return [] as Close[]; }),
+    getCdiSeries(startStr).then((r) => r.series ?? ([] as Close[])),
   ]);
+  const fx2 = fixedRows.length
+    ? await loadRates(fixedRows.map((r) => ({ indexer: r.indexer, startDate: r.startDate.toISOString().slice(0, 10), maturityDate: r.maturityDate.toISOString().slice(0, 10), tdTitle: r.tdTitle })))
+    : null;
 
   const data = computeEvolution({
     assets: rows.map((a, i) => ({
@@ -207,6 +246,13 @@ export async function loadEvolution(force = false): Promise<Evolution> {
     cdiRates,
     ibov,
     sp500Usd,
+    rates: fx2?.rates,
+    fixed: fixedRows.map((r) => ({
+      terms: termsOf(r),
+      label: rowLabel(r),
+      redeemedAt: r.redeemedAt ? r.redeemedAt.toISOString().slice(0, 10) : null,
+      redeemedNet: r.redeemedNet,
+    })),
   });
   g.__evo = { key, at: Date.now(), data };
   return data;
