@@ -4,16 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { DIVIDEND_LABEL, DIVIDEND_TYPES, JCP_TAX_RATE, monthlyNet, netOf, netSince, yieldOnCost } from "@/lib/dividends";
-import { fmtMoney, fmtNum, fmtPct } from "@/lib/format";
+import { fmtMoney, fmtNum, fmtPct, parseMoney, parseQty, parseNumber } from "@/lib/format";
 import { ASSET_CLASS_LABEL, type AssetClass } from "@/lib/types";
 import type { PositionRow } from "@/lib/server-portfolio";
-import { hasFundamentals } from "@/lib/classify";
+import { hasFundamentals, isB3Listed } from "@/lib/classify";
 
 interface Asset { id: string; ticker: string; assetClass: AssetClass; currency: string }
 interface Div { id: string; type: string; date: string; perShare: number; quantity: number; tax: number; source: string; note: string | null; asset: Asset }
 
 const today = () => new Date().toISOString().slice(0, 10);
-const num = (s: string) => Number(s.replace(",", "."));
 
 export default function ProventosPage() {
   const [divs, setDivs] = useState<Div[]>([]);
@@ -43,7 +42,7 @@ export default function ProventosPage() {
   // JCP: suggest the 15% withholding until the user edits the field
   useEffect(() => {
     if (taxTouched) return;
-    const gross = num(form.perShare || "0") * num(form.quantity || "0");
+    const gross = parseQty(form.perShare || "0") * parseQty(form.quantity || "0");
     setForm((f) => ({ ...f, tax: form.type === "JCP" && gross > 0 ? (gross * JCP_TAX_RATE).toFixed(2) : "" }));
   }, [form.type, form.perShare, form.quantity, taxTouched]);
 
@@ -55,7 +54,7 @@ export default function ProventosPage() {
     const r = await fetch("/api/dividends", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...form, perShare: num(form.perShare), quantity: num(form.quantity), tax: num(form.tax || "0"), note: form.note || undefined }),
+      body: JSON.stringify({ ...form, perShare: parseQty(form.perShare), quantity: parseNumber(form.quantity, isB3Listed(selected?.assetClass ?? "")), tax: parseMoney(form.tax || "0"), note: form.note || undefined }),
     });
     if (!r.ok) return setErr((await r.json()).error ?? "Erro");
     setForm((f) => ({ ...f, perShare: "", tax: "", note: "" }));

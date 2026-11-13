@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { ALERT_LABEL, ALERT_TYPES, describeAlert, isDynamic, type AlertType } from "@/lib/alerts";
-import { fmtMoney, fmtPct } from "@/lib/format";
+import { fmtMoney, fmtPct, parseMoney } from "@/lib/format";
 import { ASSET_CLASS_LABEL, type AssetClass } from "@/lib/types";
 
 interface Asset { id: string; ticker: string; assetClass: AssetClass; currency: string }
@@ -13,7 +13,6 @@ interface Row {
   asset: Asset;
 }
 
-const num = (s: string) => Number(s.replace(",", "."));
 
 export default function AlertasPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -45,10 +44,17 @@ export default function AlertasPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr(null);
+    const target = isDynamic(form.type) ? undefined : parseMoney(form.target);
+    if (target !== undefined && (!Number.isFinite(target) || target <= 0)) return setErr("Preço inválido");
+    // a level very far from the current price is usually a typing slip (e.g. 68.800 read as 68,8)
+    if (target !== undefined && livePrice && (target < livePrice * 0.1 || target > livePrice * 10)) {
+      const ok = confirm(`O preço do alerta (${fmtMoney(target, selected?.currency)}) está muito longe do preço atual (${fmtMoney(livePrice, selected?.currency)}). Confirma?`);
+      if (!ok) return;
+    }
     const r = await fetch("/api/alerts", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ assetId: form.assetId, type: form.type, target: isDynamic(form.type) ? undefined : num(form.target), note: form.note || undefined }),
+      body: JSON.stringify({ assetId: form.assetId, type: form.type, target, note: form.note || undefined }),
     });
     if (!r.ok) return setErr((await r.json()).error ?? "Erro");
     setForm((f) => ({ ...f, target: "", note: "" }));
@@ -80,6 +86,7 @@ export default function AlertasPage() {
           {!isDynamic(form.type) && (
             <label className="block"><span className="text-xs text-muted block mb-1">Preço ({selected?.currency ?? ""}){livePrice !== undefined ? ` · agora ${fmtMoney(livePrice, selected?.currency)}` : ""}</span>
               <input className="input w-full" inputMode="decimal" value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })} required />
+              {Number.isFinite(parseMoney(form.target)) && form.target.trim() !== "" && <span className="text-[11px] text-muted block mt-1">= {fmtMoney(parseMoney(form.target), selected?.currency)}</span>}
             </label>
           )}
           <label className="block"><span className="text-xs text-muted block mb-1">Nota (opcional)</span>

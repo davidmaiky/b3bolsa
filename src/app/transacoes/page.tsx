@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { fmtMoney, fmtNum } from "@/lib/format";
+import { fmtMoney, fmtNum, parseMoney, parseNumber } from "@/lib/format";
+import { isB3Listed } from "@/lib/classify";
 import { ASSET_CLASS_LABEL, type AssetClass } from "@/lib/types";
 import { AddAsset } from "@/components/AddAsset";
 
@@ -24,11 +25,11 @@ export default function TransacoesPage() {
   }, []);
   useEffect(load, [load]);
 
-  const num = (s: string) => Number(s.replace(",", "."));
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr(null);
-    const body = { type: form.type, quantity: num(form.quantity), price: num(form.price), fees: num(form.fees || "0"), date: form.date };
+    // ações, FIIs e ETFs da B3 são quantidades inteiras: "1.000" é mil; em cripto, "1.000" é um
+    const body = { type: form.type, quantity: parseNumber(form.quantity, isB3Listed(selected?.assetClass ?? "")), price: parseMoney(form.price), fees: parseMoney(form.fees || "0"), date: form.date };
     const r = editing
       ? await fetch(`/api/transactions/${editing}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
       : await fetch("/api/transactions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, assetId: form.assetId, note: form.note || undefined }) });

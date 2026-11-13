@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { OBJECTIVES, OBJECTIVE_LABEL, RISKS, RISK_LABEL, type Objective, type Risk } from "@/lib/profile";
+import { parseQty } from "@/lib/format";
 
-const num = (s: string) => Number(s.replace(",", "."));
 
 /** Investor profile used by the AI: risk, objective, horizon, concentration limit and free notes. */
 export function ProfileCard() {
@@ -33,7 +33,7 @@ export function ProfileCard() {
     const r = await fetch("/api/profile", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ risk: f.risk, objective: f.objective, horizonYears: Math.round(num(f.horizonYears)), maxPositionPct: f.maxPositionPct ? num(f.maxPositionPct) : null, notes: f.notes || null }),
+      body: JSON.stringify({ risk: f.risk, objective: f.objective, horizonYears: Math.round(parseQty(f.horizonYears)), maxPositionPct: f.maxPositionPct ? parseQty(f.maxPositionPct) : null, notes: f.notes || null }),
     });
     if (!r.ok) return setErr((await r.json()).error ?? "Erro");
     setSaved(true);
