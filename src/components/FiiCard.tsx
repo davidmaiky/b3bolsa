@@ -1,9 +1,9 @@
 "use client";
 import { useState } from "react";
 import { FII_SEGMENTS, type FiiMetrics } from "@/lib/fii";
-import { fmtMoney, fmtNum, fmtPct } from "@/lib/format";
+import { fmtMoney, fmtNum, fmtPct, parseQty } from "@/lib/format";
 
-const num = (s: string) => (s.trim() === "" ? null : Number(s.replace(",", ".")));
+const num = (s: string) => (s.trim() === "" ? null : parseQty(s));
 
 /** FII indicators plus the manual fields (vacancy, segment) that the free data sources do not provide. */
 export function FiiCard({ assetId, fii, currency, onSaved }: { assetId: string; fii: FiiMetrics; currency: string; onSaved: () => void }) {

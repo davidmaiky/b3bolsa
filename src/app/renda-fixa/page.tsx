@@ -2,10 +2,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { FGC_LIMIT, rowLabel, INDEXERS, INDEXER_LABEL, KINDS, KIND_LABEL, describeRate, rateHint, type Indexer, type Kind } from "@/lib/fixed-income";
 import type { FixedIncomeRow, FixedIncomeSummary } from "@/lib/fixed-income-server";
-import { fmtMoney, fmtPct, tone } from "@/lib/format";
+import { fmtMoney, fmtPct, tone, parseMoney, parseQty } from "@/lib/format";
 
 const today = () => new Date().toISOString().slice(0, 10);
-const num = (s: string) => Number(s.replace(",", "."));
 const dateBr = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
 const emptyForm = { kind: "CDB" as Kind, issuer: "", label: "", indexer: "CDI_PCT" as Indexer, rate: "", principal: "", startDate: today(), maturityDate: "", liquidity: "MATURITY", fgc: true, note: "", tdTitle: "", quantity: "" };
 interface TdTitle { title: string; maturity: string; puSell: number; rateSell: number }
@@ -44,9 +43,9 @@ export default function RendaFixaPage() {
     e.preventDefault();
     setErr(null);
     const body = {
-      kind: form.kind, issuer: form.issuer, label: form.label || null, indexer: form.indexer, rate: num(form.rate), principal: num(form.principal),
+      kind: form.kind, issuer: form.issuer, label: form.label || null, indexer: form.indexer, rate: parseQty(form.rate), principal: parseMoney(form.principal),
       startDate: form.startDate, maturityDate: form.maturityDate || null, liquidity: form.liquidity, fgc: form.fgc, note: form.note || null,
-      ...(isTd ? { tdTitle: form.tdTitle, quantity: num(form.quantity) } : {}),
+      ...(isTd ? { tdTitle: form.tdTitle, quantity: parseQty(form.quantity) } : {}),
     };
     const r = await fetch(editing ? `/api/fixed-income/${editing}` : "/api/fixed-income", { method: editing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     if (!r.ok) return setErr((await r.json()).error ?? "Erro");
@@ -69,7 +68,7 @@ export default function RendaFixaPage() {
     setAskTotal(null);
     const r = await fetch(`/api/fixed-income/${redeeming.id}/redeem`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ date: redeeming.date, partial: redeeming.partial, force, ...(redeeming.net.trim() ? { net: num(redeeming.net) } : {}) }),
+      body: JSON.stringify({ date: redeeming.date, partial: redeeming.partial, force, ...(redeeming.net.trim() ? { net: parseMoney(redeeming.net) } : {}) }),
     });
     const j = await r.json();
     if (r.status === 409 && j.code === "LOOKS_PARTIAL") return setAskTotal(j.error);
@@ -124,7 +123,7 @@ export default function RendaFixaPage() {
               <F label="Valor pago (R$)"><input className="input w-full" inputMode="decimal" value={form.principal} onChange={(e) => setForm({ ...form, principal: e.target.value })} required /></F>
               <F label="Data da compra"><input className="input w-full" type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} required /></F>
               <F label="Apelido (opcional)"><input className="input w-full" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} maxLength={60} /></F>
-              {tdCurrent && <p className="col-span-2 text-xs text-muted pb-2">Hoje: PU de venda {fmtMoney(tdCurrent.puSell)}, taxa {tdCurrent.rateSell.toLocaleString("pt-BR")}% (base {td ? dateBr(td.date) : ""}).{form.quantity ? ` Valeria ${fmtMoney(num(form.quantity) * tdCurrent.puSell)} bruto.` : ""}</p>}
+              {tdCurrent && <p className="col-span-2 text-xs text-muted pb-2">Hoje: PU de venda {fmtMoney(tdCurrent.puSell)}, taxa {tdCurrent.rateSell.toLocaleString("pt-BR")}% (base {td ? dateBr(td.date) : ""}).{form.quantity ? ` Valeria ${fmtMoney(parseQty(form.quantity) * tdCurrent.puSell)} bruto.` : ""}</p>}
             </>
           ) : (
             <>

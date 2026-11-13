@@ -3,13 +3,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { valuePosition } from "@/lib/portfolio";
 import { rebalance } from "@/lib/rebalance";
-import { fmtMoney, fmtPct, tone } from "@/lib/format";
+import { fmtMoney, fmtPct, tone, parseMoney, parseQty } from "@/lib/format";
 import { ASSET_CLASS_LABEL } from "@/lib/types";
 import type { PositionRow } from "@/lib/server-portfolio";
 
 const CLASSES = ["B3", "FII", "ETF", "US", "CRYPTO", "FX", "RF"] as const;
 const LABEL: Record<string, string> = { ...ASSET_CLASS_LABEL, RF: "Renda fixa" };
-const num = (s: string) => Number(s.replace(",", ".")) || 0;
+const pct = (s: string) => parseQty(s) || 0;
 
 export default function RebalanceamentoPage() {
   const [positions, setPositions] = useState<PositionRow[] | null>(null);
@@ -45,17 +45,17 @@ export default function RebalanceamentoPage() {
     return out;
   }, [positions, quotes, fx, rfNet]);
 
-  const sum = CLASSES.reduce((s, c) => s + num(form[c]), 0);
+  const sum = CLASSES.reduce((s, c) => s + pct(form[c]), 0);
   const missingFx = !fx && (positions ?? []).some((p) => p.quantity > 0 && p.currency === "USD");
   const hasTargets = Object.keys(saved).length > 0;
   const total = Object.values(current).reduce((s, v) => s + v, 0);
-  const aporte = num(contribution);
+  const aporte = parseMoney(contribution) || 0;
   const rows = useMemo(() => rebalance(current, saved, aporte), [current, saved, aporte]);
 
   const save = async () => {
     setErr(null);
     setOk(false);
-    const body = Object.fromEntries(CLASSES.map((c) => [c, num(form[c])]));
+    const body = Object.fromEntries(CLASSES.map((c) => [c, pct(form[c])]));
     const r = await fetch("/api/targets", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     if (!r.ok) return setErr((await r.json()).error ?? "Erro");
     setOk(true);
