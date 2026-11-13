@@ -4,6 +4,8 @@ import { getFundamentals } from "./analysis";
 import { describeAlert, isDynamic, isTriggered, thresholdFor } from "./alerts";
 import { fmtMoney } from "./format";
 import type { AssetClass, Quote } from "./types";
+import { loadFixedIncome, dueDays } from "./fixed-income-server";
+import { rowLabel } from "./fixed-income";
 
 interface Watched {
   id: string;
@@ -30,7 +32,8 @@ class AlertService {
     this.started = true;
     priceService.on("quote", (key: string, q: Quote) => void this.onQuote(key, q));
     void this.reload();
-    this.timer = setInterval(() => void this.reload(), THRESHOLD_REFRESH_MS);
+    void this.checkDue();
+    this.timer = setInterval(() => { void this.reload(); void this.checkDue(); }, THRESHOLD_REFRESH_MS);
     this.timer.unref?.();
   }
 
@@ -82,19 +85,31 @@ class AlertService {
   private async notify(w: Watched, price: number) {
     const text = `Alerta: ${w.ticker} chegou a ${fmtMoney(price, w.currency)} (${describeAlert(w.type, w.threshold, (n) => fmtMoney(n, w.currency))}).`;
     console.log("[alerts]", text);
-    const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
-    const chat = process.env.TELEGRAM_CHAT_ID?.trim();
-    if (!token || !chat) return;
+    await sendTelegram(text);
+  }
+
+  /**
+   * Maturity notices: applications that mature within `dueDays()` days (or already did) and were not redeemed.
+   * Telegram is sent once per application (dueNotifiedAt); the on-screen notice is dismissed separately (dueSeenAt).
+   */
+  async checkDue() {
     try {
-      const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ chat_id: chat, text }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!r.ok) console.warn("[alerts] telegram", r.status);
+      const limit = new Date(Date.now() + dueDays() * 86_400_000);
+      const due = await db.fixedIncome.findMany({ where: { redeemedAt: null, dueNotifiedAt: null, maturityDate: { lte: limit } } });
+      if (!due.length) return;
+      const { items } = await loadFixedIncome();
+      for (const r of due) {
+        const claimed = await db.fixedIncome.updateMany({ where: { id: r.id, dueNotifiedAt: null }, data: { dueNotifiedAt: new Date() } });
+        if (!claimed.count) continue; // another tick got it
+        const left = Math.ceil((+r.maturityDate - Date.now()) / 86_400_000);
+        const net = items.find((i) => i.id === r.id)?.value?.net;
+        const when = left < 0 ? `venceu em ${r.maturityDate.toISOString().slice(0, 10)}` : left === 0 ? "vence hoje" : `vence em ${left} dia${left === 1 ? "" : "s"} (${r.maturityDate.toISOString().slice(0, 10)})`;
+        const text = `Vencimento: ${rowLabel(r)} ${when}.${net ? ` Valor líquido estimado: ${fmtMoney(net)}.` : ""}`;
+        console.log("[alerts]", text);
+        await sendTelegram(text);
+      }
     } catch (e) {
-      console.warn("[alerts] telegram", (e as Error).message);
+      console.warn("[alerts] due check failed", (e as Error).message);
     }
   }
 
@@ -108,3 +123,21 @@ class AlertService {
 const g = globalThis as unknown as { __alerts?: AlertService };
 export const alertService = (g.__alerts ??= new AlertService());
 export const telegramConfigured = () => !!process.env.TELEGRAM_BOT_TOKEN?.trim() && !!process.env.TELEGRAM_CHAT_ID?.trim();
+
+/** Sends a message to the configured Telegram chat; silently does nothing when Telegram is not configured. */
+export async function sendTelegram(text: string) {
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  const chat = process.env.TELEGRAM_CHAT_ID?.trim();
+  if (!token || !chat) return;
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chat_id: chat, text }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!r.ok) console.warn("[alerts] telegram", r.status);
+  } catch (e) {
+    console.warn("[alerts] telegram", (e as Error).message);
+  }
+}

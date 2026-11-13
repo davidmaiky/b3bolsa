@@ -15,6 +15,7 @@ export interface LlmSuggestion {
 const SCHEMA = {
   type: "object",
   properties: {
+    visao_carteira: { type: "string" },
     sugestoes: {
       type: "array",
       items: {
@@ -31,7 +32,7 @@ const SCHEMA = {
       },
     },
   },
-  required: ["sugestoes"],
+  required: ["sugestoes", "visao_carteira"],
 };
 
 const SYSTEM = `Você é um analista fundamentalista que escreve em português do Brasil.
@@ -61,6 +62,8 @@ Perfil do investidor (quando fornecido) manda no ajuste final:
 - Se "peso_na_carteira_pct" já passa de "concentracao_maxima_por_ativo_pct", não recomende comprar mais e considere reduzir, qualquer que seja a tese.
 - Cite o perfil na justificativa sempre que ele mudar a recomendação.
 
+Renda fixa: quando houver "renda_fixa", ela faz parte do patrimônio e da alocação. Compare a "taxa_contratada" com "cdi_atual_aa_pct" e "ipca_12m_pct" (só cite taxas de mercado que estiverem nos dados), observe liquidez, vencimentos próximos ("dias_para_vencer"), e a concentração por emissor frente ao limite do FGC ("pct_do_limite_fgc"; acima de 90% é alerta). Os números de renda fixa são estimativas pelas condições do contrato.
+O campo "visao_carteira" é uma leitura geral de 3 a 6 frases, em português, sobre: o equilíbrio entre renda fixa e renda variável frente ao perfil e às metas de alocação, vencimentos que exigem decisão (reaplicar, diversificar emissor, resgatar), concentração por emissor/FGC e o que mais pede atenção na carteira inteira. Não repita as sugestões por ativo; sem renda fixa e sem metas, comente o que os dados permitirem. Nunca invente números.
 Se o investidor já tem posição, considere o preço médio e o ganho/perda não realizado ao sugerir realizar lucro ou aumentar.
 Quando faltarem dados, diga isso e reduza a confiança. preco_alvo é o preço justo estimado na moeda do ativo, ou null.
 Justificativa: 2–4 frases citando os números. Nunca invente números que não estão nos dados.`;
@@ -75,7 +78,7 @@ export function geminiModel() {
 
 const round = (_k: string, v: unknown) => (typeof v === "number" ? Number(v.toPrecision(5)) : v);
 
-export interface SuggestResult { items: LlmSuggestion[]; model: string; attempts: Attempt[] }
+export interface SuggestResult { items: LlmSuggestion[]; insight: string; model: string; attempts: Attempt[] }
 
 const CALL_TIMEOUT_MS = 90_000;
 
@@ -86,6 +89,7 @@ export async function suggest(
     weights: Record<string, number>;
     classAllocation?: { classe: string; atual_pct: number; meta_pct: number }[];
     profile?: Profile | null;
+    fixedIncome?: unknown | null; // renda fixa (ver fi-context.ts)
   },
 ): Promise<SuggestResult> {
   if (!geminiConfigured()) throw new Error("Configure GEMINI_API_KEY no arquivo .env");
@@ -96,6 +100,7 @@ export async function suggest(
   const text =
     `Data: ${new Date().toISOString().slice(0, 10)}. Patrimônio total: R$ ${ctx.totalBrl.toFixed(2)}.\n` +
     (profile ? `Perfil do investidor: ${profile}.\n` : "Perfil do investidor: não informado (assuma perfil moderado e diga que assumiu).\n") +
+    (ctx.fixedIncome ? `Renda fixa do investidor: ${JSON.stringify(ctx.fixedIncome, round)}.\n` : "") +
     (ctx.classAllocation?.length
       ? `Meta de alocação do investidor por classe (use para favorecer compras em classes abaixo da meta e cautela em classes acima): ${JSON.stringify(ctx.classAllocation, round)}.\n`
       : "") +
@@ -111,14 +116,14 @@ export async function suggest(
         contents: [{ role: "user", parts: [{ text }] }],
         config: { systemInstruction: SYSTEM, responseMimeType: "application/json", responseJsonSchema: SCHEMA, temperature: 0.2, abortSignal: ctl.signal },
       });
-      const parsed = JSON.parse(res.text ?? "") as { sugestoes?: LlmSuggestion[] };
+      const parsed = JSON.parse(res.text ?? "") as { sugestoes?: LlmSuggestion[]; visao_carteira?: string };
       if (!Array.isArray(parsed.sugestoes)) throw new Error("resposta sem a lista de sugestões");
-      return parsed.sugestoes;
+      return { items: parsed.sugestoes, insight: (parsed.visao_carteira ?? "").trim() };
     } finally {
       clearTimeout(timer);
     }
   };
 
   const { result, model, attempts } = await runWithFallback(modelChain(geminiModel(), process.env.GEMINI_FALLBACK_MODELS), call);
-  return { items: result, model, attempts };
+  return { items: result.items, insight: result.insight, model, attempts };
 }

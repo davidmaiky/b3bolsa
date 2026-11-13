@@ -2,23 +2,23 @@ import type { Close } from "./series";
 
 /** Renda fixa de banco: o valor vem das condições do contrato, não de uma cotação. Estimativa para conferência com o extrato. */
 
-export const KINDS = ["CDB", "LCI", "LCA", "CRI", "CRA", "DEBENTURE", "OUTRO"] as const;
+export const KINDS = ["CDB", "LCI", "LCA", "CRI", "CRA", "DEBENTURE", "TESOURO", "OUTRO"] as const;
 export type Kind = (typeof KINDS)[number];
-export const INDEXERS = ["PRE", "CDI_PCT", "CDI_PLUS"] as const;
+export const INDEXERS = ["PRE", "CDI_PCT", "CDI_PLUS", "IPCA_PLUS", "TESOURO"] as const;
 export type Indexer = (typeof INDEXERS)[number];
 
-export const KIND_LABEL: Record<Kind, string> = { CDB: "CDB", LCI: "LCI", LCA: "LCA", CRI: "CRI", CRA: "CRA", DEBENTURE: "Debênture", OUTRO: "Outro" };
-export const INDEXER_LABEL: Record<Indexer, string> = { PRE: "Prefixado", CDI_PCT: "% do CDI", CDI_PLUS: "CDI + taxa" };
+export const KIND_LABEL: Record<Kind, string> = { CDB: "CDB", LCI: "LCI", LCA: "LCA", CRI: "CRI", CRA: "CRA", DEBENTURE: "Debênture", TESOURO: "Tesouro Direto", OUTRO: "Outro" };
+export const INDEXER_LABEL: Record<Indexer, string> = { PRE: "Prefixado", CDI_PCT: "% do CDI", CDI_PLUS: "CDI + taxa", IPCA_PLUS: "IPCA + taxa", TESOURO: "Tesouro (preço de mercado)" };
 /** LCI, LCA, CRI e CRA são isentos de IR para pessoa física. */
 export const IR_EXEMPT: Kind[] = ["LCI", "LCA", "CRI", "CRA"];
 export const FGC_LIMIT = 250_000;
 
 export const rateHint = (i: Indexer) =>
-  i === "PRE" ? "% ao ano (ex.: 12,5)" : i === "CDI_PCT" ? "% do CDI (ex.: 110)" : "% ao ano somada ao CDI (ex.: 2,5)";
+  i === "PRE" ? "% ao ano (ex.: 12,5)" : i === "CDI_PCT" ? "% do CDI (ex.: 110)" : i === "CDI_PLUS" ? "% ao ano somada ao CDI (ex.: 2,5)" : i === "IPCA_PLUS" ? "% ao ano somada ao IPCA (ex.: 6,2)" : "não se aplica";
 
 export function describeRate(i: Indexer, rate: number): string {
   const n = rate.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
-  return i === "PRE" ? `${n}% a.a.` : i === "CDI_PCT" ? `${n}% do CDI` : `CDI + ${n}% a.a.`;
+  return i === "PRE" ? `${n}% a.a.` : i === "CDI_PCT" ? `${n}% do CDI` : i === "CDI_PLUS" ? `CDI + ${n}% a.a.` : i === "IPCA_PLUS" ? `IPCA + ${n}% a.a.` : "preço de mercado";
 }
 
 // ---------------- calendário (feriados nacionais ANBIMA) ----------------
@@ -67,34 +67,138 @@ export const calendarDays = (from: string, to: string) => Math.round((+utc(to) -
 
 // ---------------- rendimento ----------------
 
-export interface Terms { kind: Kind; indexer: Indexer; rate: number; principal: number; startDate: string; maturityDate: string }
+export interface Terms {
+  kind: Kind;
+  indexer: Indexer;
+  rate: number;
+  principal: number;
+  startDate: string;
+  maturityDate: string;
+  quantity?: number | null; // Tesouro Direto
+  tdTitle?: string | null; // Tesouro Direto
+}
+
+/** Market data the contracts depend on. Each field is optional: a contract without its data cannot be valued (null). */
+export interface Rates {
+  cdi?: Close[] | null; // SGS 12, % ao dia
+  ipca?: Close[] | null; // SGS 433, % ao mês (data = dia 1 do mês)
+  tesouro?: Map<string, Close[]> | null; // "Título|vencimento" -> PU de venda por dia
+}
+
+export const tesouroKey = (title: string, maturity: string) => `${title}|${maturity}`;
+
+const bsearch = (dates: string[], d: string): number => {
+  // number of entries with date <= d
+  let lo = 0, hi = dates.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (dates[mid] <= d) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+};
+
+const monthBd = new Map<string, number>();
+const monthEnd = (m: string) => {
+  const [y, mo] = m.split("-").map(Number);
+  return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10); // last day of the month
+};
+const bdInMonth = (m: string) => {
+  let n = monthBd.get(m);
+  if (n === undefined) {
+    n = businessDaysBetween(`${m}-01`, monthEnd(m)) + (isBusinessDay(`${m}-01`) ? 1 : 0);
+    monthBd.set(m, n);
+  }
+  return n;
+};
 
 /**
- * Gross value (curve of the contract) at `asOf`, capped at maturity.
- * PRE: (1+r)^(du/252). CDI: product of the daily CDI (SGS 12, % per day) over the business days after the application;
- * days newer than the last published rate reuse it. Returns null when a CDI contract has no CDI data at all.
+ * IPCA accumulated between (from, to]: each month's IPCA is spread over that month's business days (the NTN-B convention),
+ * so partial months count pro rata. Months not yet published reuse the last published IPCA (an estimate).
  */
-export function grossValue(t: Terms, asOf: string, cdi: Close[] | null): number | null {
-  const end = asOf < t.maturityDate ? asOf : t.maturityDate;
-  if (end <= t.startDate) return t.principal;
-
-  if (t.indexer === "PRE") return t.principal * Math.pow(1 + t.rate / 100, businessDaysBetween(t.startDate, end) / 252);
-
-  if (!cdi?.length) return null;
-  const series = [...cdi].sort((a, b) => a.date.localeCompare(b.date));
-  const inRange = series.filter((r) => r.date > t.startDate && r.date <= end);
-  const before = [...series].reverse().find((r) => r.date <= t.startDate);
-  const lastRate = inRange.at(-1)?.close ?? before?.close ?? series.at(-1)!.close;
-  const lastDate = inRange.at(-1)?.date ?? t.startDate;
-
-  const daily = (cdiPct: number) =>
-    t.indexer === "CDI_PCT" ? 1 + (cdiPct / 100) * (t.rate / 100) : (1 + cdiPct / 100) * Math.pow(1 + t.rate / 100, 1 / 252);
+export function ipcaFactor(from: string, to: string, ipca: Close[]): number {
+  const byMonth = new Map(ipca.map((r) => [r.date.slice(0, 7), r.close]));
+  const sorted = [...ipca].sort((a, b) => a.date.localeCompare(b.date));
+  const last = sorted.at(-1)?.close ?? 0;
   let factor = 1;
-  for (const r of inRange) factor *= daily(r.close);
-  const extra = lastDate < end ? businessDaysBetween(lastDate, end) : 0;
-  if (extra > 0) factor *= Math.pow(daily(lastRate), extra);
-  return t.principal * factor;
+  for (let m = from.slice(0, 7); m <= to.slice(0, 7); m = nextMonth(m)) {
+    const lo = m === from.slice(0, 7) ? from : addDay(`${m}-01`, -1); // (lo, hi]
+    const hi = m === to.slice(0, 7) ? to : monthEnd(m);
+    const inRange = businessDaysBetween(lo, hi);
+    if (inRange === 0) continue;
+    factor *= Math.pow(1 + (byMonth.get(m) ?? last) / 100, inRange / bdInMonth(m));
+  }
+  return factor;
 }
+const nextMonth = (m: string) => {
+  const [y, mo] = m.split("-").map(Number);
+  return mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, "0")}`;
+};
+const addDay = (d: string, n: number) => new Date(+utc(d) + n * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * Builds the valuation curve of one contract; the returned function gives the gross value at any date (null = missing data).
+ * PRE: (1+r)^(du/252). CDI: product of the daily CDI (prefix products, so each date is O(log n)); days newer than the last
+ * published rate reuse it. IPCA+: IPCA factor × (1+r)^(du/252). Tesouro: quantity × PU de venda on the date (last price on or before it).
+ * Everything is capped at maturity.
+ */
+export function makeAccrual(t: Terms, rates: Rates): (asOf: string) => number | null {
+  const cap = (asOf: string) => (asOf < t.maturityDate ? asOf : t.maturityDate);
+
+  if (t.indexer === "PRE") {
+    return (asOf) => {
+      const end = cap(asOf);
+      return end <= t.startDate ? t.principal : t.principal * Math.pow(1 + t.rate / 100, businessDaysBetween(t.startDate, end) / 252);
+    };
+  }
+
+  if (t.indexer === "TESOURO") {
+    const series = t.tdTitle ? rates.tesouro?.get(tesouroKey(t.tdTitle, t.maturityDate)) : undefined;
+    if (!series?.length || !t.quantity) return () => null;
+    const sorted = [...series].sort((a, b) => a.date.localeCompare(b.date));
+    const dates = sorted.map((r) => r.date);
+    return (asOf) => {
+      const end = cap(asOf);
+      if (end <= t.startDate) return t.principal;
+      const n = bsearch(dates, end);
+      return n ? t.quantity! * sorted[n - 1].close : t.principal;
+    };
+  }
+
+  if (t.indexer === "IPCA_PLUS") {
+    const ipca = rates.ipca;
+    if (!ipca?.length) return () => null;
+    return (asOf) => {
+      const end = cap(asOf);
+      if (end <= t.startDate) return t.principal;
+      return t.principal * ipcaFactor(t.startDate, end, ipca) * Math.pow(1 + t.rate / 100, businessDaysBetween(t.startDate, end) / 252);
+    };
+  }
+
+  // CDI_PCT and CDI_PLUS
+  const cdi = rates.cdi;
+  if (!cdi?.length) return () => null;
+  const series = [...cdi].sort((a, b) => a.date.localeCompare(b.date));
+  const dates = series.map((r) => r.date);
+  const daily = (c: number) => (t.indexer === "CDI_PCT" ? 1 + (c / 100) * (t.rate / 100) : (1 + c / 100) * Math.pow(1 + t.rate / 100, 1 / 252));
+  const prefix = [1];
+  for (const r of series) prefix.push(prefix[prefix.length - 1] * daily(r.close));
+
+  return (asOf) => {
+    const end = cap(asOf);
+    if (end <= t.startDate) return t.principal;
+    const lo = bsearch(dates, t.startDate);
+    const hi = bsearch(dates, end);
+    let factor = prefix[hi] / prefix[lo];
+    const lastDate = hi > lo ? dates[hi - 1] : t.startDate;
+    const lastRate = hi > lo ? series[hi - 1].close : lo > 0 ? series[lo - 1].close : series[series.length - 1].close;
+    const extra = lastDate < end ? businessDaysBetween(lastDate, end) : 0;
+    if (extra > 0) factor *= Math.pow(daily(lastRate), extra);
+    return t.principal * factor;
+  };
+}
+
+/** Gross value (curve of the contract) at `asOf`; null when the data the contract depends on is missing. */
+export const grossValue = (t: Terms, asOf: string, rates: Rates): number | null => makeAccrual(t, rates)(asOf);
 
 // ---------------- impostos ----------------
 
@@ -127,8 +231,13 @@ export interface FixedIncomeValue extends Net {
   netYieldPct: number; // rendimento líquido acumulado sobre o aplicado
 }
 
-export function valueOf(t: Terms, asOf: string, cdi: Close[] | null): FixedIncomeValue | null {
-  const gross = grossValue(t, asOf, cdi);
+export function valueOf(t: Terms, asOf: string, rates: Rates): FixedIncomeValue | null {
+  return valueFrom(t, asOf, makeAccrual(t, rates));
+}
+
+/** Same as valueOf with a prebuilt curve (use it when valuing many dates of one contract). */
+export function valueFrom(t: Terms, asOf: string, accrual: (asOf: string) => number | null): FixedIncomeValue | null {
+  const gross = accrual(asOf);
   if (gross === null) return null;
   const n = netValue(t.kind, t.principal, gross, t.startDate, asOf, t.maturityDate);
   return {
@@ -140,3 +249,7 @@ export function valueOf(t: Terms, asOf: string, cdi: Close[] | null): FixedIncom
     netYieldPct: t.principal ? ((n.net - t.principal) / t.principal) * 100 : 0,
   };
 }
+
+/** Display name: the nickname, else the Tesouro title, else "CDB Banco X". */
+export const rowLabel = (r: { label?: string | null; kind: string; issuer: string; tdTitle?: string | null }) =>
+  r.label || (r.kind === "TESOURO" && r.tdTitle ? r.tdTitle : `${KIND_LABEL[r.kind as Kind] ?? r.kind} ${r.issuer}`);

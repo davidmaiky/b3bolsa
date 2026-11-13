@@ -1,13 +1,14 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { FGC_LIMIT, INDEXERS, INDEXER_LABEL, KINDS, KIND_LABEL, describeRate, rateHint, type Indexer, type Kind } from "@/lib/fixed-income";
+import { FGC_LIMIT, rowLabel, INDEXERS, INDEXER_LABEL, KINDS, KIND_LABEL, describeRate, rateHint, type Indexer, type Kind } from "@/lib/fixed-income";
 import type { FixedIncomeRow, FixedIncomeSummary } from "@/lib/fixed-income-server";
 import { fmtMoney, fmtPct, tone } from "@/lib/format";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const num = (s: string) => Number(s.replace(",", "."));
 const dateBr = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
-const emptyForm = { kind: "CDB" as Kind, issuer: "", label: "", indexer: "CDI_PCT" as Indexer, rate: "", principal: "", startDate: today(), maturityDate: "", liquidity: "MATURITY", fgc: true, note: "" };
+const emptyForm = { kind: "CDB" as Kind, issuer: "", label: "", indexer: "CDI_PCT" as Indexer, rate: "", principal: "", startDate: today(), maturityDate: "", liquidity: "MATURITY", fgc: true, note: "", tdTitle: "", quantity: "" };
+interface TdTitle { title: string; maturity: string; puSell: number; rateSell: number }
 
 export default function RendaFixaPage() {
   const [data, setData] = useState<{ items: FixedIncomeRow[]; summary: FixedIncomeSummary } | null>(null);
@@ -15,11 +16,28 @@ export default function RendaFixaPage() {
   const [editing, setEditing] = useState<string | null>(null);
   const [redeeming, setRedeeming] = useState<{ id: string; date: string; net: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [td, setTd] = useState<{ date: string; titles: TdTitle[] } | null>(null);
+  const [tdErr, setTdErr] = useState<string | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/fixed-income").then((r) => r.json()).then(setData).catch(() => setErr("Não foi possível carregar"));
   }, []);
   useEffect(load, [load]);
+
+  const isTd = form.kind === "TESOURO";
+  const pickKind = (kind: Kind) =>
+    setForm((f) => (kind === "TESOURO"
+      ? { ...f, kind, indexer: "TESOURO", issuer: "Tesouro Nacional", fgc: false, liquidity: "DAILY", rate: "0" }
+      : { ...f, kind, indexer: f.indexer === "TESOURO" ? "CDI_PCT" : f.indexer, issuer: f.issuer === "Tesouro Nacional" ? "" : f.issuer, fgc: f.kind === "TESOURO" ? true : f.fgc, rate: f.kind === "TESOURO" ? "" : f.rate, tdTitle: "", quantity: "" }));
+  useEffect(() => {
+    if (!isTd || td || tdErr) return;
+    fetch("/api/tesouro").then(async (r) => { const j = await r.json(); if (!r.ok) throw new Error(j.error ?? "Erro"); setTd(j); }).catch((e) => setTdErr(e.message));
+  }, [isTd, td, tdErr]);
+  const tdPick = (key: string) => {
+    const t = td?.titles.find((x) => `${x.title}|${x.maturity}` === key);
+    setForm((f) => ({ ...f, tdTitle: t?.title ?? "", maturityDate: t?.maturity ?? "" }));
+  };
+  const tdCurrent = td?.titles.find((x) => x.title === form.tdTitle && x.maturity === form.maturityDate);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,6 +45,7 @@ export default function RendaFixaPage() {
     const body = {
       kind: form.kind, issuer: form.issuer, label: form.label || null, indexer: form.indexer, rate: num(form.rate), principal: num(form.principal),
       startDate: form.startDate, maturityDate: form.maturityDate, liquidity: form.liquidity, fgc: form.fgc, note: form.note || null,
+      ...(isTd ? { tdTitle: form.tdTitle, quantity: num(form.quantity) } : {}),
     };
     const r = await fetch(editing ? `/api/fixed-income/${editing}` : "/api/fixed-income", { method: editing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     if (!r.ok) return setErr((await r.json()).error ?? "Erro");
@@ -38,7 +57,7 @@ export default function RendaFixaPage() {
   const startEdit = (i: FixedIncomeRow) => {
     setErr(null);
     setEditing(i.id);
-    setForm({ kind: i.kind, issuer: i.issuer, label: i.label ?? "", indexer: i.indexer, rate: String(i.rate), principal: String(i.principal), startDate: i.startDate, maturityDate: i.maturityDate, liquidity: i.liquidity, fgc: i.fgc, note: i.note ?? "" });
+    setForm({ kind: i.kind, issuer: i.issuer, label: i.label ?? "", indexer: i.indexer, rate: String(i.rate), principal: String(i.principal), startDate: i.startDate, maturityDate: i.maturityDate, liquidity: i.liquidity, fgc: i.fgc, note: i.note ?? "", tdTitle: i.tdTitle ?? "", quantity: i.quantity ? String(i.quantity) : "" });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const cancelEdit = () => { setEditing(null); setErr(null); setForm(emptyForm); };
@@ -61,7 +80,7 @@ export default function RendaFixaPage() {
   const active = items.filter((i) => !i.redeemedAt);
   const done = items.filter((i) => i.redeemedAt);
   const soon = active.filter((i) => i.value && !i.value.matured && i.value.daysToMaturity <= 30);
-  const label = (i: FixedIncomeRow) => i.label || `${KIND_LABEL[i.kind]} ${i.issuer}`;
+  const label = rowLabel;
   const redeemingRow = redeeming ? items.find((i) => i.id === redeeming.id) : undefined;
 
   return (
@@ -75,8 +94,8 @@ export default function RendaFixaPage() {
         <Kpi label="Rendimento líquido" value={fmtMoney(summary.net - summary.principal)} sub={fmtPct(summary.principal ? ((summary.net - summary.principal) / summary.principal) * 100 : undefined)} t={summary.net - summary.principal} />
       </section>
 
-      {!summary.cdiAvailable && <p className="text-xs text-yellow-400">Sem os dados do CDI (Banco Central) no momento: aplicações atreladas ao CDI aparecem pelo valor aplicado até a consulta funcionar.</p>}
-      {summary.cdiStale && <p className="text-xs text-yellow-400">O Banco Central não respondeu: usei a última cópia do CDI guardada.</p>}
+      {summary.missing.length > 0 && <p className="text-xs text-yellow-400">Sem {summary.missing.join(", ")} no momento: as aplicações que dependem deles aparecem pelo valor aplicado até a consulta funcionar.</p>}
+      {summary.stale && <p className="text-xs text-yellow-400">Uma das fontes (Banco Central ou Tesouro) não respondeu: usei a última cópia guardada.</p>}
       {soon.length > 0 && (
         <p className="text-xs text-yellow-400">Vencem em até 30 dias: {soon.map((i) => `${label(i)} (${dateBr(i.maturityDate)})`).join("; ")}.</p>
       )}
@@ -87,23 +106,42 @@ export default function RendaFixaPage() {
       <section className="card p-4 space-y-3">
         <h2 className="font-semibold">{editing ? "Editar aplicação" : "Nova aplicação"}</h2>
         <form onSubmit={submit} className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end text-sm">
-          <F label="Tipo"><select className="input w-full" value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as Kind })}>{KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</select></F>
-          <F label="Banco / emissor"><input className="input w-full" value={form.issuer} onChange={(e) => setForm({ ...form, issuer: e.target.value })} maxLength={60} required /></F>
-          <F label="Apelido (opcional)"><input className="input w-full" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} maxLength={60} /></F>
-          <F label="Rentabilidade"><select className="input w-full" value={form.indexer} onChange={(e) => setForm({ ...form, indexer: e.target.value as Indexer })}>{INDEXERS.map((i) => <option key={i} value={i}>{INDEXER_LABEL[i]}</option>)}</select></F>
-          <F label={`Taxa — ${rateHint(form.indexer)}`}><input className="input w-full" inputMode="decimal" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} required /></F>
-          <F label="Valor aplicado (R$)"><input className="input w-full" inputMode="decimal" value={form.principal} onChange={(e) => setForm({ ...form, principal: e.target.value })} required /></F>
-          <F label="Data da aplicação"><input className="input w-full" type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} required /></F>
-          <F label="Vencimento"><input className="input w-full" type="date" value={form.maturityDate} onChange={(e) => setForm({ ...form, maturityDate: e.target.value })} required /></F>
-          <F label="Liquidez"><select className="input w-full" value={form.liquidity} onChange={(e) => setForm({ ...form, liquidity: e.target.value })}><option value="MATURITY">No vencimento</option><option value="DAILY">Diária</option></select></F>
-          <label className="flex items-center gap-2 text-sm pb-2"><input type="checkbox" checked={form.fgc} onChange={(e) => setForm({ ...form, fgc: e.target.checked })} /> Coberto pelo FGC</label>
+          <F label="Tipo"><select className="input w-full" value={form.kind} onChange={(e) => pickKind(e.target.value as Kind)}>{KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</select></F>
+          {isTd ? (
+            <>
+              <F label="Título do Tesouro Direto">
+                <select className="input w-full" value={form.tdTitle ? `${form.tdTitle}|${form.maturityDate}` : ""} onChange={(e) => tdPick(e.target.value)} required>
+                  <option value="">{td ? "Escolha…" : tdErr ? "Lista indisponível" : "Carregando…"}</option>
+                  {td?.titles.map((t) => <option key={`${t.title}|${t.maturity}`} value={`${t.title}|${t.maturity}`}>{t.title} · vence {dateBr(t.maturity)}</option>)}
+                  {form.tdTitle && !tdCurrent && <option value={`${form.tdTitle}|${form.maturityDate}`}>{form.tdTitle} · vence {dateBr(form.maturityDate)}</option>}
+                </select>
+              </F>
+              <F label="Quantidade de títulos"><input className="input w-full" inputMode="decimal" placeholder="ex.: 0,5" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} required /></F>
+              <F label="Valor pago (R$)"><input className="input w-full" inputMode="decimal" value={form.principal} onChange={(e) => setForm({ ...form, principal: e.target.value })} required /></F>
+              <F label="Data da compra"><input className="input w-full" type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} required /></F>
+              <F label="Apelido (opcional)"><input className="input w-full" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} maxLength={60} /></F>
+              {tdCurrent && <p className="col-span-2 text-xs text-muted pb-2">Hoje: PU de venda {fmtMoney(tdCurrent.puSell)}, taxa {tdCurrent.rateSell.toLocaleString("pt-BR")}% (base {td ? dateBr(td.date) : ""}).{form.quantity ? ` Valeria ${fmtMoney(num(form.quantity) * tdCurrent.puSell)} bruto.` : ""}</p>}
+            </>
+          ) : (
+            <>
+              <F label="Banco / emissor"><input className="input w-full" value={form.issuer} onChange={(e) => setForm({ ...form, issuer: e.target.value })} maxLength={60} required /></F>
+              <F label="Apelido (opcional)"><input className="input w-full" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} maxLength={60} /></F>
+              <F label="Rentabilidade"><select className="input w-full" value={form.indexer} onChange={(e) => setForm({ ...form, indexer: e.target.value as Indexer })}>{INDEXERS.filter((i) => i !== "TESOURO").map((i) => <option key={i} value={i}>{INDEXER_LABEL[i]}</option>)}</select></F>
+              <F label={`Taxa — ${rateHint(form.indexer)}`}><input className="input w-full" inputMode="decimal" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} required /></F>
+              <F label="Valor aplicado (R$)"><input className="input w-full" inputMode="decimal" value={form.principal} onChange={(e) => setForm({ ...form, principal: e.target.value })} required /></F>
+              <F label="Data da aplicação"><input className="input w-full" type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} required /></F>
+              <F label="Vencimento"><input className="input w-full" type="date" value={form.maturityDate} onChange={(e) => setForm({ ...form, maturityDate: e.target.value })} required /></F>
+              <F label="Liquidez"><select className="input w-full" value={form.liquidity} onChange={(e) => setForm({ ...form, liquidity: e.target.value })}><option value="MATURITY">No vencimento</option><option value="DAILY">Diária</option></select></F>
+              <label className="flex items-center gap-2 text-sm pb-2"><input type="checkbox" checked={form.fgc} onChange={(e) => setForm({ ...form, fgc: e.target.checked })} /> Coberto pelo FGC</label>
+            </>
+          )}
           <div className="col-span-2 flex gap-2">
             <button className="btn flex-1 md:flex-none">{editing ? "Salvar" : "Adicionar"}</button>
             {editing && <button type="button" className="btn-ghost" onClick={cancelEdit}>Cancelar</button>}
           </div>
         </form>
         {err && <p className="text-down text-sm">{err}</p>}
-        <p className="text-[11px] text-muted">O valor é calculado pelas condições que você informa (curva do contrato), com IR regressivo e IOF; LCI, LCA, CRI e CRA são isentos de IR. É uma estimativa: o extrato do banco manda. Ainda não há IPCA+ nem Tesouro Direto.</p>
+        <p className="text-[11px] text-muted">O valor é calculado pelas condições que você informa (curva do contrato), com IR regressivo e IOF; LCI, LCA, CRI e CRA são isentos de IR. IPCA+ usa o IPCA do Banco Central (meses ainda não divulgados repetem o último). Tesouro Direto vale pela quantidade × preço de venda do dia (Tesouro Transparente), sem a taxa de custódia da B3. É uma estimativa: o extrato manda.</p>
       </section>
 
       {redeemingRow && redeeming && (
@@ -128,7 +166,7 @@ export default function RendaFixaPage() {
                 <span className="num">{fmtMoney(i.value?.net ?? i.principal)}</span>
               </div>
               <div className="text-xs text-muted flex justify-between gap-3">
-                <span>{i.issuer} · {describeRate(i.indexer, i.rate)}</span>
+                <span>{i.indexer === "TESOURO" ? `${i.tdTitle ?? "Tesouro"} · ${i.quantity ?? "?"} título(s)` : `${i.issuer} · ${describeRate(i.indexer, i.rate)}`}</span>
                 <span className={tone(i.value?.netYieldPct)}>{i.value ? fmtPct(i.value.netYieldPct) : "—"}</span>
               </div>
               <div className="text-xs text-muted">Aplicado {fmtMoney(i.principal)} em {dateBr(i.startDate)} · vence {dateBr(i.maturityDate)}{i.value ? ` (${i.value.matured ? "vencida" : `${i.value.daysToMaturity} d`})` : ""}</div>
@@ -144,7 +182,7 @@ export default function RendaFixaPage() {
               {active.map((i) => (
                 <tr key={i.id} className={`border-t border-line text-right ${editing === i.id ? "bg-panel-2" : ""}`}>
                   <td className="text-left py-2"><span className="font-medium">{label(i)}</span><span className="block text-xs text-muted">{i.issuer}{i.fgc ? " · FGC" : ""}{i.liquidity === "DAILY" ? " · liquidez diária" : ""}</span></td>
-                  <td className="text-left text-muted">{describeRate(i.indexer, i.rate)}</td>
+                  <td className="text-left text-muted">{i.indexer === "TESOURO" ? `${i.quantity ?? "?"} título(s)` : describeRate(i.indexer, i.rate)}</td>
                   <td className="num">{fmtMoney(i.principal)}</td>
                   <td className="num">{i.value ? fmtMoney(i.value.gross) : "—"}</td>
                   <td className="num">{fmtMoney(i.value?.net ?? i.principal)}</td>

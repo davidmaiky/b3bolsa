@@ -41,6 +41,7 @@ Preencha o `.env`:
 - `GEMINI_API_KEY`: https://aistudio.google.com/apikey
 - `APP_PASSWORD` e `AUTH_SECRET` (opcionais): com `APP_PASSWORD` preenchida, o site exige login (cookie de sessão de 30 dias, 5 tentativas erradas bloqueiam por 5 minutos). `AUTH_SECRET`: `openssl rand -hex 32`. Deixe vazias para desativar. Em HTTP puro a senha trafega sem criptografia na rede local; para acesso pela internet use HTTPS
 - `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID` (opcionais): para receber os alertas de preço também no Telegram. Crie o bot com o @BotFather, mande uma mensagem para ele e pegue seu chat id com o @userinfobot
+- `FI_DUE_DAYS` (opcional): quantos dias antes do vencimento da renda fixa avisar (padrão 7)
 - `GEMINI_FALLBACK_MODELS` (opcional): modelos reserva separados por vírgula, na ordem de tentativa
 - `GEMINI_MODEL` (opcional): padrão `gemini-2.5-flash`, que funciona no plano gratuito. Modelos Pro (ex.: `gemini-3.1-pro-preview`) exigem faturamento ativo na conta do Google AI Studio
 
@@ -103,13 +104,17 @@ No IR, FII paga 20% sobre o ganho de capital, sem isenção (rendimentos são is
 
 ## Renda fixa
 
-A página **Renda fixa** controla CDB, LCI, LCA, CRI, CRA e debêntures de bancos. Não existe cotação pública para esses títulos, então o valor é **calculado pelas condições do contrato**, que você cadastra: banco, valor aplicado, datas, rentabilidade (**prefixada**, **% do CDI** ou **CDI + taxa**), liquidez e se tem FGC.
+A página **Renda fixa** controla CDB, LCI, LCA, CRI, CRA, debêntures e **Tesouro Direto**. Não existe cotação pública para os títulos de banco, então o valor é **calculado pelas condições do contrato**, que você cadastra: banco, valor aplicado, datas, rentabilidade, liquidez e se tem FGC.
 
-- **Valor bruto**: a "curva" do contrato. Prefixado: (1 + taxa)^(dias úteis/252). CDI: produto do CDI diário do Banco Central sobre os dias úteis após a aplicação (calendário de feriados nacionais da ANBIMA). Depois do vencimento o valor para de render.
+- **Rentabilidade**: prefixada, **% do CDI**, **CDI + taxa** e **IPCA + taxa**. Prefixado: (1 + taxa)^(dias úteis/252). CDI: produto do CDI diário do Banco Central sobre os dias úteis após a aplicação (feriados nacionais da ANBIMA). IPCA+: o IPCA de cada mês é distribuído pelos dias úteis do mês (convenção da NTN-B) e meses ainda não divulgados repetem o último IPCA. Depois do vencimento o valor para de render.
+- **Tesouro Direto**: escolha o título na lista do dia, informe a quantidade e o valor pago. O valor é a quantidade × preço de venda do dia, lido do Tesouro Transparente (marcação a mercado, não a curva). A taxa de custódia da B3 não é descontada.
 - **Valor líquido**: desconta IR regressivo (22,5% até 180 dias, 20% até 360, 17,5% até 720, 15% acima) e IOF nos primeiros 30 dias. LCI, LCA, CRI e CRA são isentos de IR para pessoa física.
-- **Integração**: o valor líquido entra no patrimônio, no resultado e na alocação da Carteira, e é uma classe ("Renda fixa") no Rebalanceamento. Há aviso de vencimentos nos próximos 30 dias e de proximidade do limite do FGC (R$ 250 mil por CPF e instituição).
+- **Integração**: o valor líquido entra no patrimônio, no resultado e na alocação da Carteira e é uma classe ("Renda fixa") no Rebalanceamento. Na **Evolução**, cada aplicação rende dia a dia (aporte na data da aplicação, saída no resgate) e aparece a linha "Renda fixa" comparada ao CDI, ao Ibovespa e ao S&P 500; aportes e resgates não contam como ganho.
+- **IR**: a página IR ganhou a seção "Renda fixa" por ano: resgates com rendimento líquido e IR retido estimado, rendimento isento (LCI, LCA, CRI, CRA) e a posição em 31/12 para Bens e Direitos. Confira com o informe de rendimentos do banco.
+- **Vencimentos**: aviso na tela, notificação do navegador e Telegram quando uma aplicação vence em até 7 dias (`FI_DUE_DAYS` muda o prazo) ou já venceu sem ser resgatada. Cada aviso de Telegram sai uma vez por aplicação.
+- **Gemini**: recebe a renda fixa (itens, vencimentos, exposição por emissor frente ao limite do FGC, CDI e IPCA 12 meses do dia) e escreve uma **visão geral da carteira** que aparece na página Sugestões IA, além das sugestões por ativo.
 - **Resgate**: marque a aplicação como resgatada (com o valor líquido recebido, ou a estimativa) e ela sai do patrimônio.
-- **Limites**: é uma estimativa e o extrato do banco manda. Ainda não há IPCA+ nem Tesouro Direto; a integração com a página de Evolução, o IR e as sugestões do Gemini fica para as próximas etapas.
+- **Limites**: é uma estimativa e o extrato do banco manda. O FGC é só um aviso (limite de R$ 250 mil por CPF e instituição).
 
 ## Indicadores
 

@@ -144,6 +144,10 @@ model FixedIncome {
   note         String?
   redeemedAt   DateTime?
   redeemedNet  Float? // valor líquido recebido no resgate
+  tdTitle      String? // Tesouro Direto: nome do título (ex.: Tesouro IPCA+ com Juros Semestrais)
+  quantity     Float? // Tesouro Direto: quantidade de títulos (aceita fração)
+  dueNotifiedAt DateTime? // aviso de vencimento já enviado (Telegram)
+  dueSeenAt    DateTime? // aviso de vencimento dispensado na tela
   createdAt    DateTime  @default(now())
 
   @@index([redeemedAt])
@@ -155,4 +159,20 @@ model RateCache {
   data      String // JSON [{date, close}]
   fromDate  String // início do período guardado
   updatedAt DateTime @updatedAt
+}
+
+// Preços do Tesouro Direto (Tesouro Transparente) dos títulos que você tem: JSON {"Título|vencimento": [{date, close}]}, close = PU de venda.
+model TesouroCache {
+  id        String   @id @default("all")
+  data      String
+  fromDate  String
+  updatedAt DateTime @updatedAt
+}
+
+// Leitura geral da carteira gerada pelo Gemini junto com as sugestões (renda fixa, alocação, vencimentos).
+model PortfolioInsight {
+  id        String   @id @default(cuid())
+  text      String
+  model     String
+  createdAt DateTime @default(now())
 }

@@ -8,8 +8,12 @@ export default function SugestoesPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [insight, setInsight] = useState<{ text?: string; model?: string; createdAt?: string }>({});
 
-  const load = () => fetch("/api/suggestions").then((r) => r.json()).then(setRows);
+  const load = () => {
+    fetch("/api/suggestions").then((r) => r.json()).then(setRows);
+    fetch("/api/insight").then((r) => (r.ok ? r.json() : {})).then(setInsight).catch(() => setInsight({}));
+  };
   useEffect(() => { load(); }, []);
 
   const run = async () => {
@@ -46,6 +50,13 @@ export default function SugestoesPage() {
         Conteúdo gerado por IA com dados possivelmente atrasados ou incompletos. Não é recomendação de investimento; decida com seu próprio julgamento ou com um profissional certificado.
       </p>
       <ProfileCard />
+      {insight.text && (
+        <section className="card p-4 space-y-2">
+          <h2 className="font-semibold">Visão geral da carteira</h2>
+          <p className="text-sm leading-relaxed whitespace-pre-line">{insight.text}</p>
+          <p className="text-[11px] text-muted">{insight.model} · {insight.createdAt ? new Date(insight.createdAt).toLocaleString("pt-BR") : ""}</p>
+        </section>
+      )}
       {err && <p className="text-down text-sm">{err}</p>}
       {info && <p className="text-xs text-yellow-400/90">{info}</p>}
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">

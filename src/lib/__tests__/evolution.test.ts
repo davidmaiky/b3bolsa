@@ -78,3 +78,54 @@ describe("computeEvolution", () => {
     expect(ev.points[3].sp500).toBeCloseTo(110, 6);
   });
 });
+
+import { businessDaysBetween, netValue, type Terms } from "../fixed-income";
+
+describe("renda fixa na evolução", () => {
+  const cdb: Terms = { kind: "CDB", indexer: "PRE", rate: 12, principal: 10_000, startDate: "2026-01-05", maturityDate: "2027-01-05" };
+
+  it("works with fixed income only: money in on the start date, net value accrues daily", () => {
+    const ev = computeEvolution({ assets: [], fx: [], end: "2026-03-02", fixed: [{ terms: cdb, label: "CDB A" }] });
+    const p = ev.points;
+    expect(p[0].date).toBe("2026-01-05");
+    expect(p[0].holdings).toBe(10_000);
+    expect(p[0].invested).toBe(10_000);
+    const last = p.at(-1)!;
+    const du = businessDaysBetween(cdb.startDate, "2026-03-02");
+    const gross = 10_000 * Math.pow(1.12, du / 252);
+    const net = netValue("CDB", 10_000, gross, cdb.startDate, "2026-03-02", cdb.maturityDate).net;
+    expect(last.rf).toBeCloseTo(net, 6);
+    expect(last.holdings).toBeCloseTo(net, 6);
+    expect(last.invested).toBe(10_000); // só o aporte; o rendimento não é aporte
+    expect(last.rfTwr!).toBeGreaterThan(100);
+    expect(last.rfTwr!).toBeCloseTo((net / 10_000) * 100, 1); // sem aportes extras, o índice acompanha o saldo
+  });
+
+  it("a redemption takes the value out and counts as cash out, not as a loss", () => {
+    const ev = computeEvolution({ assets: [], fx: [], end: "2026-04-10", fixed: [{ terms: cdb, label: "CDB A", redeemedAt: "2026-03-02", redeemedNet: 10_150 }] });
+    const day = (d: string) => ev.points.find((x) => x.date === d)!;
+    expect(day("2026-03-02").holdings).toBe(0);
+    expect(day("2026-03-02").invested).toBeCloseTo(10_000 - 10_150, 6);
+    expect(day("2026-04-10").rf).toBe(0);
+    expect(day("2026-03-01").rf).toBeGreaterThan(10_000);
+    // o índice não despenca no dia do resgate: o dinheiro saiu, não foi perdido
+    expect(day("2026-03-02").rfTwr!).toBeGreaterThan(day("2026-02-27").rfTwr! * 0.99);
+  });
+
+  it("adds to stocks, and a second deposit does not count as performance", () => {
+    const stock = { ref: { ticker: "AAA", assetClass: "B3" as const, currency: "BRL" }, txs: [{ type: "BUY", quantity: 10, price: 10, date: "2026-01-05" }], closes: [{ date: "2026-01-05", close: 10 }, { date: "2026-01-06", close: 11 }], divs: [] };
+    const second: Terms = { ...cdb, startDate: "2026-02-02", principal: 20_000 };
+    const ev = computeEvolution({ assets: [stock], fx: [], end: "2026-02-03", fixed: [{ terms: cdb, label: "A" }, { terms: second, label: "B" }] });
+    const d = (x: string) => ev.points.find((p) => p.date === x)!;
+    expect(d("2026-02-02").invested).toBeCloseTo(100 + 10_000 + 20_000, 6);
+    expect(d("2026-02-03").holdings).toBeGreaterThan(d("2026-02-02").holdings);
+    // a entrada de 20 mil em 02/02 não vira "ganho": o índice sobe só pelo rendimento do dia
+    expect(d("2026-02-02").rfTwr! / d("2026-01-30").rfTwr!).toBeLessThan(1.01);
+  });
+
+  it("warns and keeps the principal when a CDI contract has no CDI data", () => {
+    const ev = computeEvolution({ assets: [], fx: [], end: "2026-02-10", fixed: [{ terms: { ...cdb, indexer: "CDI_PCT", rate: 110 }, label: "CDB B" }], rates: {} });
+    expect(ev.points.at(-1)!.rf).toBe(10_000);
+    expect(ev.warnings.join()).toContain("CDB B");
+  });
+});
