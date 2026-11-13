@@ -101,6 +101,7 @@ class AlertService {
       for (const r of due) {
         const claimed = await db.fixedIncome.updateMany({ where: { id: r.id, dueNotifiedAt: null }, data: { dueNotifiedAt: new Date() } });
         if (!claimed.count) continue; // another tick got it
+        if (!r.maturityDate) continue;
         const left = Math.ceil((+r.maturityDate - Date.now()) / 86_400_000);
         const net = items.find((i) => i.id === r.id)?.value?.net;
         const when = left < 0 ? `venceu em ${r.maturityDate.toISOString().slice(0, 10)}` : left === 0 ? "vence hoje" : `vence em ${left} dia${left === 1 ? "" : "s"} (${r.maturityDate.toISOString().slice(0, 10)})`;

@@ -4,7 +4,7 @@ import { yahooHistory } from "@/lib/yahoo";
 import { computeTax } from "@/lib/tax";
 import { fixedIncomeTaxSummary } from "@/lib/fixed-income-tax";
 import { loadRates, termsOf } from "@/lib/fixed-income-server";
-import { rowLabel } from "@/lib/fixed-income";
+import { OPEN_END, rowLabel } from "@/lib/fixed-income";
 import type { AssetClass } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -35,7 +35,7 @@ export async function GET() {
     let fixedIncome: ReturnType<typeof fixedIncomeTaxSummary> = [];
     let fixedMissing: string[] = [];
     if (fixedRows.length) {
-      const { rates, missing } = await loadRates(fixedRows.map((r) => ({ indexer: r.indexer, startDate: r.startDate.toISOString().slice(0, 10), maturityDate: r.maturityDate.toISOString().slice(0, 10), tdTitle: r.tdTitle })));
+      const { rates, missing } = await loadRates(fixedRows.map((r) => ({ indexer: r.indexer, startDate: r.startDate.toISOString().slice(0, 10), maturityDate: r.maturityDate ? r.maturityDate.toISOString().slice(0, 10) : OPEN_END, tdTitle: r.tdTitle })));
       fixedMissing = missing;
       const fiFirst = Math.min(...fixedRows.map((r) => r.startDate.getUTCFullYear()));
       const years = Array.from({ length: now.getUTCFullYear() - fiFirst + 1 }, (_, i) => fiFirst + i);

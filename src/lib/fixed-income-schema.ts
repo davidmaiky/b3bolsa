@@ -11,17 +11,17 @@ export const FixedIncomeBody = z
     rate: z.number().default(0),
     principal: z.number().positive("O valor aplicado precisa ser maior que zero"),
     startDate: z.string().min(8),
-    maturityDate: z.string().min(8),
+    maturityDate: z.string().min(8).nullable().optional(),
     liquidity: z.enum(["DAILY", "MATURITY"]).default("MATURITY"),
     fgc: z.boolean().default(true),
     note: z.string().trim().max(300).nullable().optional(),
     tdTitle: z.string().trim().max(80).nullable().optional(),
     quantity: z.number().positive("Informe a quantidade de títulos").nullable().optional(),
   })
-  .refine((d) => !Number.isNaN(+new Date(d.startDate)) && !Number.isNaN(+new Date(d.maturityDate)), { message: "Data inválida" })
-  .refine((d) => new Date(d.maturityDate) > new Date(d.startDate), { message: "O vencimento precisa ser depois da aplicação" })
+  .refine((d) => !Number.isNaN(+new Date(d.startDate)) && (!d.maturityDate || !Number.isNaN(+new Date(d.maturityDate))), { message: "Data inválida" })
+  .refine((d) => !d.maturityDate || new Date(d.maturityDate) > new Date(d.startDate), { message: "O vencimento precisa ser depois da aplicação" })
   .refine((d) => (d.kind === "TESOURO") === (d.indexer === "TESOURO"), { message: "Tesouro Direto usa a rentabilidade \"Tesouro (preço de mercado)\", e só ele" })
-  .refine((d) => d.indexer !== "TESOURO" || (!!d.tdTitle && !!d.quantity), { message: "Escolha o título do Tesouro e informe a quantidade" })
+  .refine((d) => d.indexer !== "TESOURO" || (!!d.tdTitle && !!d.quantity && !!d.maturityDate), { message: "Escolha o título do Tesouro e informe a quantidade" })
   .refine(
     (d) =>
       d.indexer === "TESOURO" ? true
@@ -37,7 +37,7 @@ export function toDb(d: ReturnType<typeof FixedIncomeBody.parse>) {
   const tesouro = d.indexer === "TESOURO";
   return {
     kind: d.kind, issuer: d.issuer, label: d.label || null, indexer: d.indexer, rate: tesouro ? 0 : d.rate, principal: d.principal,
-    startDate: new Date(d.startDate), maturityDate: new Date(d.maturityDate), liquidity: d.liquidity, fgc: tesouro ? false : d.fgc,
+    startDate: new Date(d.startDate), maturityDate: d.maturityDate ? new Date(d.maturityDate) : null, liquidity: d.liquidity, fgc: tesouro ? false : d.fgc,
     note: d.note || null, tdTitle: tesouro ? d.tdTitle ?? null : null, quantity: tesouro ? d.quantity ?? null : null,
   };
 }

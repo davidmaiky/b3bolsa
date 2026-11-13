@@ -163,3 +163,39 @@ describe("Tesouro Direto", () => {
     expect(valueOf(t, "2026-02-01", { tesouro: pu })!.net).toBeLessThan(1_504); // IR sobre o ganho
   });
 });
+
+import { looksPartial, partialFraction, OPEN_END } from "../fixed-income";
+
+describe("resgate parcial", () => {
+  it("fraction of the balance taken out; rejects zero, missing estimate and amounts that are not partial", () => {
+    expect(partialFraction(3_000, 750)).toEqual({ fraction: 0.25 });
+    expect("error" in partialFraction(null, 100)).toBe(true);
+    expect("error" in partialFraction(3_000, 0)).toBe(true);
+    expect("error" in partialFraction(3_000, 3_000)).toBe(true);
+    expect("error" in partialFraction(3_000, 4_000)).toBe(true);
+  });
+  it("a total redemption far below the estimate looks partial (the case of R$ 296 on R$ 3.2 mil)", () => {
+    expect(looksPartial(3_262, 296)).toBe(true);
+    expect(looksPartial(3_262, 3_250)).toBe(false); // diferença pequena: é só o saldo real do banco
+    expect(looksPartial(null, 296)).toBe(false);
+  });
+  it("splitting by the fraction keeps the total value (everything scales with the principal)", () => {
+    const t: Terms = { ...base, principal: 3_259.16, startDate: "2026-10-27", maturityDate: "2027-10-27" };
+    const full = grossValue(t, "2026-11-13", {})!;
+    const f = 0.1;
+    const a = grossValue({ ...t, principal: t.principal * f }, "2026-11-13", {})!;
+    const b = grossValue({ ...t, principal: t.principal * (1 - f) }, "2026-11-13", {})!;
+    expect(a + b).toBeCloseTo(full, 8);
+  });
+});
+
+describe("sem vencimento", () => {
+  it("an open-ended contract keeps accruing, never matures and has no days to maturity", () => {
+    const t: Terms = { ...base, maturityDate: OPEN_END };
+    expect(grossValue(t, "2030-01-01", {})!).toBeGreaterThan(grossValue(t, "2027-01-05", {})!);
+    const v = valueOf(t, "2026-11-13", {})!;
+    expect(v.matured).toBe(false);
+    expect(v.daysToMaturity).toBeNull();
+    expect(v.net).toBeGreaterThan(10_000);
+  });
+});

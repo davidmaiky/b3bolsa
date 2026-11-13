@@ -138,7 +138,7 @@ model FixedIncome {
   rate         Float // PRE: % a.a. | CDI_PCT: % do CDI (ex.: 110) | CDI_PLUS: taxa % a.a. somada ao CDI
   principal    Float // valor aplicado (R$)
   startDate    DateTime
-  maturityDate DateTime
+  maturityDate DateTime? // opcional: CDB sem data de vencimento (liquidez diária)
   liquidity    String    @default("MATURITY") // DAILY | MATURITY
   fgc          Boolean   @default(true)
   note         String?

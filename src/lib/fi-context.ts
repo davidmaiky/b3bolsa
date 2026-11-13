@@ -39,7 +39,7 @@ export async function fixedIncomeForPrompt() {
       emissor: i.issuer,
       indexador: INDEXER_LABEL[i.indexer],
       taxa_contratada: i.indexer === "TESOURO" ? (i.tdTitle ?? "Tesouro") : describeRate(i.indexer, i.rate),
-      vencimento: i.maturityDate,
+      vencimento: i.maturityDate ?? "sem vencimento",
       dias_para_vencer: i.value?.daysToMaturity ?? null,
       liquidez: i.liquidity === "DAILY" ? "diária" : "no vencimento",
       fgc: i.fgc,
